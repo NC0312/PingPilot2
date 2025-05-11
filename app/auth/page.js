@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Eye, EyeOff, Mail, Lock, User, Server, AlertTriangle, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import Link from 'next/link';
 
 export default function AuthPage() {
     const [isLogin, setIsLogin] = useState(true);
@@ -15,14 +16,14 @@ export default function AuthPage() {
     const [successMessage, setSuccessMessage] = useState(null);
 
     const router = useRouter();
-    const { user, login, signup } = useAuth();
+    const { user, login, signup, isAuthenticated } = useAuth();
 
     // Redirect if already logged in
     useEffect(() => {
-        if (user) {
+        if (user && isAuthenticated()) {
             router.push('/dashboard');
         }
-    }, [user, router]);
+    }, [user, router, isAuthenticated]);
 
     const loginForm = useForm({
         defaultValues: {
@@ -70,6 +71,12 @@ export default function AuthPage() {
         setLoading(true);
         setAuthError(null);
 
+        if (data.password !== data.confirmPassword) {
+            setAuthError('Passwords do not match');
+            setLoading(false);
+            return;
+        }
+
         try {
             await signup(data.email, data.password, data.name);
             setSuccessMessage('Account created! Please check your email for verification.');
@@ -104,6 +111,9 @@ export default function AuthPage() {
                 case 'auth/network-request-failed':
                     errorMessage = 'Network error. Please check your connection';
                     break;
+                case 'auth/too-many-requests':
+                    errorMessage = 'Too many failed login attempts. Please try again later or reset your password';
+                    break;
                 default:
                     errorMessage = error.message || 'Authentication failed';
             }
@@ -117,7 +127,7 @@ export default function AuthPage() {
             <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
                 <Server size={28} className="text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Ping Pilott</h1>
+            <h1 className="text-3xl font-bold text-white mb-2">Ping Pilot</h1>
             <p className="text-blue-300 mb-8">Server monitoring made simple</p>
 
             <div className="bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-8">
@@ -162,7 +172,7 @@ export default function AuthPage() {
 
                 {isLogin ? (
                     // Login Form
-                    <div className="space-y-4">
+                    <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4">
                         <div>
                             <label htmlFor="login-email" className="block mb-1 text-sm font-medium text-gray-300">
                                 Email
@@ -223,14 +233,13 @@ export default function AuthPage() {
                         </div>
 
                         <div className="flex items-center justify-end">
-                            <a href="/auth/forgot-password" className="text-sm text-blue-400 hover:underline">
+                            <Link href="/auth/forgot-password" className="text-sm text-blue-400 hover:underline">
                                 Forgot password?
-                            </a>
+                            </Link>
                         </div>
 
                         <button
-                            type="button"
-                            onClick={handleLoginSubmit(onLoginSubmit)}
+                            type="submit"
                             disabled={loading}
                             className={`w-full ${loading ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'
                                 } focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors`}
@@ -247,10 +256,10 @@ export default function AuthPage() {
                                 'Sign In'
                             )}
                         </button>
-                    </div>
+                    </form>
                 ) : (
                     // Register Form
-                    <div className="space-y-4">
+                    <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
                         <div>
                             <label htmlFor="register-name" className="block mb-1 text-sm font-medium text-gray-300">
                                 Name
@@ -361,6 +370,13 @@ export default function AuthPage() {
                                         validate: value => value === passwordValue || 'Passwords do not match'
                                     })}
                                 />
+                                <button
+                                    type="button"
+                                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                >
+                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                </button>
                             </div>
                             {registerErrors.confirmPassword && (
                                 <p className="mt-1 text-sm text-red-500">{registerErrors.confirmPassword.message}</p>
@@ -368,8 +384,7 @@ export default function AuthPage() {
                         </div>
 
                         <button
-                            type="button"
-                            onClick={handleRegisterSubmit(onRegisterSubmit)}
+                            type="submit"
                             disabled={loading}
                             className={`w-full ${loading ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'
                                 } focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors`}
@@ -386,7 +401,7 @@ export default function AuthPage() {
                                 'Create Account'
                             )}
                         </button>
-                    </div>
+                    </form>
                 )}
 
                 <div className="mt-6 text-center">
