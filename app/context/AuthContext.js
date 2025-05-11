@@ -1,4 +1,6 @@
 // context/AuthContext.js
+'use client';
+
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
     onAuthStateChanged,
@@ -8,7 +10,7 @@ import {
     sendEmailVerification
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { auth, db } from '../../firebase/config'; // Adjust the path as necessary
 
 const AuthContext = createContext({});
 

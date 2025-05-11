@@ -1,8 +1,6 @@
 // app/api/users/route.js
 import { NextResponse } from 'next/server';
 import { getUsers } from '../../../services/userService';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
 
 export async function GET(request) {
     try {
