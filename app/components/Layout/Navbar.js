@@ -43,7 +43,7 @@ const Navbar = () => {
                         <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
                             <Server size={24} />
                         </div>
-                        <h1 className="text-xl font-bold">Ping Pilot</h1>
+                        <h1 className="text-xl font-bold">Ping Pilott</h1>
                     </div>
                 </div>
 
