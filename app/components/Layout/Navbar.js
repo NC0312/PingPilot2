@@ -40,10 +40,11 @@ const Navbar = () => {
             <div className="hidden md:flex flex-col w-64 bg-[#031D27] text-white h-screen fixed">
                 <div className="p-5 border-b border-gray-700">
                     <div className="flex items-center">
-                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                        {/* <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
                             <Server size={24} />
-                        </div>
-                        <h1 className="text-xl font-bold">Ping Pilott</h1>
+                        </div> */}
+                        {/* <h1 className="text-xl font-bold">Ping Pilott</h1> */}
+                        <img src='/logo.png'/>
                     </div>
                 </div>
 
