@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Server, AlertTriangle, Check, MailCheck, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Link from 'next/link';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 
 const USERS_COLLECTION = 'users';
@@ -78,7 +78,11 @@ export default function VerifyEmailPage() {
             }
         };
 
-        verifyEmail();
+        if (token && userId) {
+            verifyEmail();
+        } else {
+            setLoading(false);
+        }
     }, [token, userId]);
 
     // Function to resend verification email
@@ -92,11 +96,23 @@ export default function VerifyEmailPage() {
         setError(null);
 
         try {
-            // In a real app, you would implement this functionality
-            // in your AuthContext to send a new verification email
+            // Call the API to resend verification email
+            const response = await fetch('/api/verify-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: user.email,
+                    name: user.displayName || '',
+                }),
+            });
 
-            // Simulate success for this example
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to send verification email');
+            }
 
             setSuccess(true);
         } catch (err) {

@@ -16,7 +16,7 @@ export default function ForgotPasswordPage() {
     const [success, setSuccess] = useState(false);
 
     const router = useRouter();
-    const { user, resetPassword } = useAuth();
+    const { user } = useAuth();
 
     // Redirect if already logged in
     useEffect(() => {
@@ -39,7 +39,21 @@ export default function ForgotPasswordPage() {
         setSuccess(false);
 
         try {
-            await resetPassword(data.email);
+            // Call the password reset API
+            const response = await fetch('/api/reset-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: data.email }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to process password reset');
+            }
+
             setSuccess(true);
         } catch (err) {
             console.error('Password reset error:', err);

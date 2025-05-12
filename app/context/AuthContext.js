@@ -95,6 +95,86 @@ export const AuthProvider = ({ children }) => {
         return sessionId;
     };
 
+    // Send verification email
+    const sendVerificationEmail = async (userId, email, name = '') => {
+        try {
+            const verificationToken = uuidv4();
+            const expiryTime = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+            // Update user with verification token
+            const userRef = doc(db, USERS_COLLECTION, userId);
+            await updateDoc(userRef, {
+                verificationToken,
+                verificationTokenExpiry: expiryTime
+            });
+
+            // Call the API to send verification email
+            const response = await fetch('/api/verify-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email,
+                    name,
+                    userId
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to send verification email');
+            }
+
+            return true;
+        } catch (err) {
+            console.error('Error sending verification email:', err);
+            throw err;
+        }
+    };
+
+    // Verify email with token
+    const verifyEmail = async (token, userId) => {
+        try {
+            const userRef = doc(db, USERS_COLLECTION, userId);
+            const userSnap = await getDoc(userRef);
+
+            if (!userSnap.exists()) {
+                throw new Error('User not found');
+            }
+
+            const userData = userSnap.data();
+
+            if (userData.verificationToken !== token) {
+                throw new Error('Invalid verification token');
+            }
+
+            if (!userData.verificationTokenExpiry || userData.verificationTokenExpiry < Date.now()) {
+                throw new Error('Verification token has expired');
+            }
+
+            await updateDoc(userRef, {
+                emailVerified: true,
+                verificationToken: null,
+                verificationTokenExpiry: null
+            });
+
+            // Update user state if this is the current user
+            if (user && user.uid === userId) {
+                setUser({
+                    ...user,
+                    emailVerified: true
+                });
+            }
+
+            return true;
+        } catch (err) {
+            console.error('Error verifying email:', err);
+            throw err;
+        }
+    };
+
     // Sign up function
     const signup = async (email, password, name = '') => {
         setError(null);
@@ -123,7 +203,7 @@ export const AuthProvider = ({ children }) => {
             await createSession(uid);
 
             // Send verification email
-            // await sendVerificationEmail(uid, email);
+            await sendVerificationEmail(uid, email, name);
 
             const userDataToReturn = { ...userData };
             delete userDataToReturn.password;
@@ -182,14 +262,34 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('No user found with this email');
             }
 
-            const newPassword = Math.random().toString(36).slice(-8);
-            const hashedPassword = await bcryptjs.hash(newPassword, 10);
+            const userData = querySnapshot.docs[0].data();
+            const userId = userData.uid;
 
+            // Generate reset token and expiry
+            const resetToken = uuidv4();
+            const resetTokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+            // Update user with reset token
             await updateDoc(querySnapshot.docs[0].ref, {
-                password: hashedPassword
+                resetToken,
+                resetTokenExpiry
             });
 
-            console.log('New password:', newPassword);
+            // Call the API to send reset email
+            const response = await fetch('/api/reset-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to send reset email');
+            }
+
             return true;
         } catch (err) {
             setError(err.message);
@@ -215,6 +315,27 @@ export const AuthProvider = ({ children }) => {
             setError(err.message);
             throw err;
         }
+    };
+
+    // Request email verification resend
+    const resendVerificationEmail = async () => {
+        setError(null);
+        try {
+            if (!user) {
+                throw new Error('No authenticated user');
+            }
+
+            await sendVerificationEmail(user.uid, user.email, user.displayName || '');
+            return true;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Check if email needs verification
+    const checkEmailVerification = () => {
+        return user && !user.emailVerified;
     };
 
     // Enhanced logout function with proper cleanup
@@ -253,8 +374,10 @@ export const AuthProvider = ({ children }) => {
             getCurrentUser: () => user,
             updateUserProfile,
             isAuthenticated: () => !!user,
-            // sendVerificationEmail,
-            // verifyEmail
+            sendVerificationEmail,
+            verifyEmail,
+            resendVerificationEmail,
+            checkEmailVerification
         }}>
             {!loading ? children : <div>Loading...</div>}
         </AuthContext.Provider>
