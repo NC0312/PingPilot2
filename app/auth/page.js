@@ -8,6 +8,14 @@ import { Eye, EyeOff, Mail, Lock, User, Server, AlertTriangle, Check } from 'luc
 import { useAuth } from '../context/AuthContext';
 import Link from 'next/link';
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const ERROR_MESSAGES = {
+    'Email already in use': 'Email is already in use',
+    'No user found with this email': 'Invalid email or password',
+    'Incorrect password': 'Invalid email or password',
+    default: 'Authentication failed'
+};
+
 export default function AuthPage() {
     const [isLogin, setIsLogin] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
@@ -16,33 +24,31 @@ export default function AuthPage() {
     const [successMessage, setSuccessMessage] = useState(null);
 
     const router = useRouter();
-    const { user, login, signup, isAuthenticated } = useAuth();
+    const { user, login, signup } = useAuth();
 
     // Redirect if already logged in
     useEffect(() => {
-        if (user && isAuthenticated()) {
-            router.push('/dashboard');
+        if (user) {
+            router.push('/');
         }
-    }, [user, router, isAuthenticated]);
+    }, [user, router]);
 
-    const loginForm = useForm({
-        defaultValues: {
-            email: '',
-            password: ''
-        }
+    const {
+        register: loginRegister,
+        handleSubmit: handleLoginSubmit,
+        formState: { errors: loginErrors }
+    } = useForm({
+        defaultValues: { email: '', password: '' }
     });
 
-    const registerForm = useForm({
-        defaultValues: {
-            name: '',
-            email: '',
-            password: '',
-            confirmPassword: ''
-        }
+    const {
+        register: registerRegister,
+        handleSubmit: handleRegisterSubmit,
+        formState: { errors: registerErrors },
+        watch
+    } = useForm({
+        defaultValues: { name: '', email: '', password: '', confirmPassword: '' }
     });
-
-    const { register: registerLoginField, handleSubmit: handleLoginSubmit, formState: { errors: loginErrors } } = loginForm;
-    const { register: registerRegisterField, handleSubmit: handleRegisterSubmit, formState: { errors: registerErrors }, watch } = registerForm;
 
     const passwordValue = watch('password', '');
 
@@ -50,6 +56,11 @@ export default function AuthPage() {
         setIsLogin(!isLogin);
         setAuthError(null);
         setSuccessMessage(null);
+    };
+
+    const handleAuthError = (error) => {
+        const message = error.message || 'Authentication failed';
+        setAuthError(ERROR_MESSAGES[message] || message);
     };
 
     const onLoginSubmit = async (data) => {
@@ -71,17 +82,9 @@ export default function AuthPage() {
         setLoading(true);
         setAuthError(null);
 
-        if (data.password !== data.confirmPassword) {
-            setAuthError('Passwords do not match');
-            setLoading(false);
-            return;
-        }
-
         try {
             await signup(data.email, data.password, data.name);
-            setSuccessMessage('Account created! Please check your email for verification.');
-            // Clear form fields
-            registerForm.reset();
+            setSuccessMessage('Account created successfully!');
         } catch (error) {
             console.error('Registration error:', error);
             handleAuthError(error);
@@ -90,37 +93,59 @@ export default function AuthPage() {
         }
     };
 
-    const handleAuthError = (error) => {
-        let errorMessage = 'Authentication failed';
+    const renderFormInput = (id, label, type, icon, register, errors, options = {}) => (
+        <div>
+            <label htmlFor={id} className="block mb-1 text-sm font-medium text-gray-300">
+                {label}
+            </label>
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                    {icon}
+                </div>
+                <input
+                    id={id}
+                    type={type === 'password' ? (showPassword ? 'text' : 'password') : type}
+                    className={`bg-gray-700 border ${errors[id.split('-').pop()] ? 'border-red-500' : 'border-gray-600'} 
+                    text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
+                    placeholder={options.placeholder}
+                    {...register(id.split('-').pop(), options.validation)}
+                />
+                {type === 'password' && (
+                    <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white"
+                        onClick={() => setShowPassword(!showPassword)}
+                    >
+                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                )}
+            </div>
+            {errors[id.split('-').pop()] && (
+                <p className="mt-1 text-sm text-red-500">{errors[id.split('-').pop()].message}</p>
+            )}
+        </div>
+    );
 
-        if (error.code) {
-            switch (error.code) {
-                case 'auth/user-not-found':
-                case 'auth/wrong-password':
-                    errorMessage = 'Invalid email or password';
-                    break;
-                case 'auth/email-already-in-use':
-                    errorMessage = 'Email is already in use';
-                    break;
-                case 'auth/invalid-email':
-                    errorMessage = 'Invalid email format';
-                    break;
-                case 'auth/weak-password':
-                    errorMessage = 'Password is too weak';
-                    break;
-                case 'auth/network-request-failed':
-                    errorMessage = 'Network error. Please check your connection';
-                    break;
-                case 'auth/too-many-requests':
-                    errorMessage = 'Too many failed login attempts. Please try again later or reset your password';
-                    break;
-                default:
-                    errorMessage = error.message || 'Authentication failed';
-            }
-        }
-
-        setAuthError(errorMessage);
-    };
+    const renderButton = (text, loadingText) => (
+        <button
+            type="submit"
+            disabled={loading}
+            className={`w-full ${loading ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} 
+            focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors`}
+        >
+            {loading ? (
+                <div className="flex justify-center items-center">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {loadingText}
+                </div>
+            ) : (
+                text
+            )}
+        </button>
+    );
 
     return (
         <div className="min-h-screen flex flex-col justify-center items-center bg-[#031D27] px-4 py-12">
@@ -136,16 +161,14 @@ export default function AuthPage() {
                         <button
                             type="button"
                             onClick={() => setIsLogin(true)}
-                            className={`py-2 px-4 rounded-md transition-colors ${isLogin ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'
-                                }`}
+                            className={`py-2 px-4 rounded-md transition-colors ${isLogin ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}
                         >
                             Login
                         </button>
                         <button
                             type="button"
                             onClick={() => setIsLogin(false)}
-                            className={`py-2 px-4 rounded-md transition-colors ${!isLogin ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'
-                                }`}
+                            className={`py-2 px-4 rounded-md transition-colors ${!isLogin ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}
                         >
                             Sign Up
                         </button>
@@ -171,66 +194,40 @@ export default function AuthPage() {
                 )}
 
                 {isLogin ? (
-                    // Login Form
                     <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4">
-                        <div>
-                            <label htmlFor="login-email" className="block mb-1 text-sm font-medium text-gray-300">
-                                Email
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <Mail className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    id="login-email"
-                                    type="email"
-                                    className={`bg-gray-700 border ${loginErrors.email ? 'border-red-500' : 'border-gray-600'
-                                        } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                                    placeholder="name@company.com"
-                                    {...registerLoginField('email', {
-                                        required: 'Email is required',
-                                        pattern: {
-                                            value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-                                            message: 'Invalid email format'
-                                        }
-                                    })}
-                                />
-                            </div>
-                            {loginErrors.email && (
-                                <p className="mt-1 text-sm text-red-500">{loginErrors.email.message}</p>
-                            )}
-                        </div>
+                        {renderFormInput(
+                            'login-email',
+                            'Email',
+                            'email',
+                            <Mail className="h-5 w-5 text-gray-400" />,
+                            loginRegister,
+                            loginErrors,
+                            {
+                                placeholder: 'name@company.com',
+                                validation: {
+                                    required: 'Email is required',
+                                    pattern: {
+                                        value: EMAIL_REGEX,
+                                        message: 'Invalid email format'
+                                    }
+                                }
+                            }
+                        )}
 
-                        <div>
-                            <label htmlFor="login-password" className="block mb-1 text-sm font-medium text-gray-300">
-                                Password
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <Lock className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    id="login-password"
-                                    type={showPassword ? "text" : "password"}
-                                    className={`bg-gray-700 border ${loginErrors.password ? 'border-red-500' : 'border-gray-600'
-                                        } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                                    placeholder="••••••••"
-                                    {...registerLoginField('password', {
-                                        required: 'Password is required'
-                                    })}
-                                />
-                                <button
-                                    type="button"
-                                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                >
-                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                                </button>
-                            </div>
-                            {loginErrors.password && (
-                                <p className="mt-1 text-sm text-red-500">{loginErrors.password.message}</p>
-                            )}
-                        </div>
+                        {renderFormInput(
+                            'login-password',
+                            'Password',
+                            'password',
+                            <Lock className="h-5 w-5 text-gray-400" />,
+                            loginRegister,
+                            loginErrors,
+                            {
+                                placeholder: '••••••••',
+                                validation: {
+                                    required: 'Password is required'
+                                }
+                            }
+                        )}
 
                         <div className="flex items-center justify-end">
                             <Link href="/auth/forgot-password" className="text-sm text-blue-400 hover:underline">
@@ -238,169 +235,84 @@ export default function AuthPage() {
                             </Link>
                         </div>
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className={`w-full ${loading ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'
-                                } focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors`}
-                        >
-                            {loading ? (
-                                <div className="flex justify-center items-center">
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Signing In...
-                                </div>
-                            ) : (
-                                'Sign In'
-                            )}
-                        </button>
+                        {renderButton('Sign In', 'Signing In...')}
                     </form>
                 ) : (
-                    // Register Form
                     <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
-                        <div>
-                            <label htmlFor="register-name" className="block mb-1 text-sm font-medium text-gray-300">
-                                Name
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <User className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    id="register-name"
-                                    type="text"
-                                    className={`bg-gray-700 border ${registerErrors.name ? 'border-red-500' : 'border-gray-600'
-                                        } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                                    placeholder="Your name"
-                                    {...registerRegisterField('name', {
-                                        required: 'Name is required',
-                                        minLength: {
-                                            value: 2,
-                                            message: 'Name must be at least 2 characters'
-                                        }
-                                    })}
-                                />
-                            </div>
-                            {registerErrors.name && (
-                                <p className="mt-1 text-sm text-red-500">{registerErrors.name.message}</p>
-                            )}
-                        </div>
+                        {renderFormInput(
+                            'register-name',
+                            'Name',
+                            'text',
+                            <User className="h-5 w-5 text-gray-400" />,
+                            registerRegister,
+                            registerErrors,
+                            {
+                                placeholder: 'Your name',
+                                validation: {
+                                    required: 'Name is required',
+                                    minLength: {
+                                        value: 2,
+                                        message: 'Name must be at least 2 characters'
+                                    }
+                                }
+                            }
+                        )}
 
-                        <div>
-                            <label htmlFor="register-email" className="block mb-1 text-sm font-medium text-gray-300">
-                                Email
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <Mail className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    id="register-email"
-                                    type="email"
-                                    className={`bg-gray-700 border ${registerErrors.email ? 'border-red-500' : 'border-gray-600'
-                                        } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                                    placeholder="name@company.com"
-                                    {...registerRegisterField('email', {
-                                        required: 'Email is required',
-                                        pattern: {
-                                            value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-                                            message: 'Invalid email format'
-                                        }
-                                    })}
-                                />
-                            </div>
-                            {registerErrors.email && (
-                                <p className="mt-1 text-sm text-red-500">{registerErrors.email.message}</p>
-                            )}
-                        </div>
+                        {renderFormInput(
+                            'register-email',
+                            'Email',
+                            'email',
+                            <Mail className="h-5 w-5 text-gray-400" />,
+                            registerRegister,
+                            registerErrors,
+                            {
+                                placeholder: 'name@company.com',
+                                validation: {
+                                    required: 'Email is required',
+                                    pattern: {
+                                        value: EMAIL_REGEX,
+                                        message: 'Invalid email format'
+                                    }
+                                }
+                            }
+                        )}
 
-                        <div>
-                            <label htmlFor="register-password" className="block mb-1 text-sm font-medium text-gray-300">
-                                Password
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <Lock className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    id="register-password"
-                                    type={showPassword ? "text" : "password"}
-                                    className={`bg-gray-700 border ${registerErrors.password ? 'border-red-500' : 'border-gray-600'
-                                        } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                                    placeholder="••••••••"
-                                    {...registerRegisterField('password', {
-                                        required: 'Password is required',
-                                        minLength: {
-                                            value: 6,
-                                            message: 'Password must be at least 6 characters'
-                                        }
-                                    })}
-                                />
-                                <button
-                                    type="button"
-                                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                >
-                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                                </button>
-                            </div>
-                            {registerErrors.password && (
-                                <p className="mt-1 text-sm text-red-500">{registerErrors.password.message}</p>
-                            )}
-                        </div>
+                        {renderFormInput(
+                            'register-password',
+                            'Password',
+                            'password',
+                            <Lock className="h-5 w-5 text-gray-400" />,
+                            registerRegister,
+                            registerErrors,
+                            {
+                                placeholder: '••••••••',
+                                validation: {
+                                    required: 'Password is required',
+                                    minLength: {
+                                        value: 6,
+                                        message: 'Password must be at least 6 characters'
+                                    }
+                                }
+                            }
+                        )}
 
-                        <div>
-                            <label htmlFor="register-confirm-password" className="block mb-1 text-sm font-medium text-gray-300">
-                                Confirm Password
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                    <Lock className="h-5 w-5 text-gray-400" />
-                                </div>
-                                <input
-                                    id="register-confirm-password"
-                                    type={showPassword ? "text" : "password"}
-                                    className={`bg-gray-700 border ${registerErrors.confirmPassword ? 'border-red-500' : 'border-gray-600'
-                                        } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                                    placeholder="••••••••"
-                                    {...registerRegisterField('confirmPassword', {
-                                        required: 'Please confirm your password',
-                                        validate: value => value === passwordValue || 'Passwords do not match'
-                                    })}
-                                />
-                                <button
-                                    type="button"
-                                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                >
-                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                                </button>
-                            </div>
-                            {registerErrors.confirmPassword && (
-                                <p className="mt-1 text-sm text-red-500">{registerErrors.confirmPassword.message}</p>
-                            )}
-                        </div>
+                        {renderFormInput(
+                            'register-confirmPassword',
+                            'Confirm Password',
+                            'password',
+                            <Lock className="h-5 w-5 text-gray-400" />,
+                            registerRegister,
+                            registerErrors,
+                            {
+                                placeholder: '••••••••',
+                                validation: {
+                                    required: 'Please confirm your password',
+                                    validate: value => value === passwordValue || 'Passwords do not match'
+                                }
+                            }
+                        )}
 
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className={`w-full ${loading ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'
-                                } focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors`}
-                        >
-                            {loading ? (
-                                <div className="flex justify-center items-center">
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Creating Account...
-                                </div>
-                            ) : (
-                                'Create Account'
-                            )}
-                        </button>
+                        {renderButton('Create Account', 'Creating Account...')}
                     </form>
                 )}
 

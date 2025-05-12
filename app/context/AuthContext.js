@@ -1,185 +1,262 @@
-// app/context/AuthContext.js
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    signOut as firebaseSignOut,
-    sendEmailVerification,
-    sendPasswordResetEmail,
-    onAuthStateChanged,
-    getIdToken
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../../firebase/config';
+    collection,
+    addDoc,
+    query,
+    where,
+    getDocs,
+    doc,
+    updateDoc,
+    deleteDoc,
+    setDoc,
+    getDoc
+} from 'firebase/firestore';
+import { db } from '../firebase/config';
+import bcryptjs from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 const AuthContext = createContext({});
-
 export const useAuth = () => useContext(AuthContext);
 
-export const AuthContextProvider = ({ children }) => {
+const USERS_COLLECTION = 'users';
+const SESSIONS_COLLECTION = 'sessions';
+const SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [authToken, setAuthToken] = useState(null);
-    const router = useRouter();
+    const [error, setError] = useState(null);
 
-    // Initialize auth state
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        const checkSession = async () => {
             try {
-                if (firebaseUser) {
-                    // Get the JWT token
-                    const token = await getIdToken(firebaseUser);
-                    setAuthToken(token);
+                const sessionId = localStorage.getItem('sessionId');
 
-                    // Store token in localStorage for API requests
-                    localStorage.setItem('authToken', token);
-
-                    // Get additional user data from Firestore
-                    const userRef = doc(db, 'users', firebaseUser.uid);
-                    const userSnap = await getDoc(userRef);
-
-                    if (userSnap.exists()) {
-                        setUser({
-                            uid: firebaseUser.uid,
-                            email: firebaseUser.email,
-                            emailVerified: firebaseUser.emailVerified,
-                            role: userSnap.data().role || 'user',
-                            ...userSnap.data()
-                        });
-                    } else {
-                        setUser({
-                            uid: firebaseUser.uid,
-                            email: firebaseUser.email,
-                            emailVerified: firebaseUser.emailVerified,
-                            role: 'user'
-                        });
-                    }
-                } else {
-                    // No user is signed in
-                    setUser(null);
-                    setAuthToken(null);
-                    localStorage.removeItem('authToken');
+                if (!sessionId) {
+                    setLoading(false);
+                    return;
                 }
-            } catch (error) {
-                console.error('Auth state error:', error);
-                setUser(null);
-                setAuthToken(null);
-                localStorage.removeItem('authToken');
+
+                const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
+                const sessionSnap = await getDoc(sessionRef);
+
+                if (!sessionSnap.exists()) {
+                    localStorage.removeItem('sessionId');
+                    setLoading(false);
+                    return;
+                }
+
+                const sessionData = sessionSnap.data();
+
+                if (sessionData.expiresAt < Date.now()) {
+                    await deleteDoc(sessionRef);
+                    localStorage.removeItem('sessionId');
+                    setLoading(false);
+                    return;
+                }
+
+                const userRef = doc(db, USERS_COLLECTION, sessionData.userId);
+                const userSnap = await getDoc(userRef);
+
+                if (!userSnap.exists()) {
+                    localStorage.removeItem('sessionId');
+                    setLoading(false);
+                    return;
+                }
+
+                const userData = userSnap.data();
+                delete userData.password;
+
+                setUser(userData);
+            } catch (err) {
+                console.error('Error checking session:', err);
+                setError(err.message);
             } finally {
                 setLoading(false);
             }
-        });
+        };
 
-        // Cleanup subscription
-        return () => unsubscribe();
+        checkSession();
     }, []);
 
-    // Login function
-    const login = async (email, password) => {
-        try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const createSession = async (userId) => {
+        const sessionId = uuidv4();
+        const sessionData = {
+            sessionId,
+            userId,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + SESSION_EXPIRY,
+        };
 
-            // Token is handled in the onAuthStateChanged listener
-            return userCredential.user;
-        } catch (error) {
-            throw error;
+        await setDoc(doc(db, SESSIONS_COLLECTION, sessionId), sessionData);
+        localStorage.setItem('sessionId', sessionId);
+        return sessionId;
+    };
+
+    // Sign up function
+    const signup = async (email, password, name = '') => {
+        setError(null);
+        try {
+            const usersRef = collection(db, USERS_COLLECTION);
+            const q = query(usersRef, where('email', '==', email));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+                throw new Error('Email already in use');
+            }
+
+            const hashedPassword = await bcryptjs.hash(password, 10);
+            const uid = uuidv4();
+            const userData = {
+                uid,
+                email,
+                password: hashedPassword,
+                displayName: name,
+                photoURL: null,
+                emailVerified: false,
+                createdAt: Date.now(),
+            };
+
+            await setDoc(doc(db, USERS_COLLECTION, uid), userData);
+            await createSession(uid);
+
+            // Send verification email
+            // await sendVerificationEmail(uid, email);
+
+            const userDataToReturn = { ...userData };
+            delete userDataToReturn.password;
+            setUser(userDataToReturn);
+
+            return userDataToReturn;
+        } catch (err) {
+            setError(err.message);
+            throw err;
         }
     };
 
-    // Signup function
-    const signup = async (email, password, name) => {
+    const login = async (email, password) => {
+        setError(null);
         try {
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const usersRef = collection(db, USERS_COLLECTION);
+            const q = query(usersRef, where('email', '==', email));
+            const querySnapshot = await getDocs(q);
 
-            // Send email verification
-            await sendEmailVerification(userCredential.user);
+            if (querySnapshot.empty) {
+                throw new Error('No user found with this email');
+            }
 
-            // Add user to Firestore with default role
-            await setDoc(doc(db, 'users', userCredential.user.uid), {
-                name,
-                email,
-                role: 'user',
-                createdAt: new Date().toISOString()
+            const userData = querySnapshot.docs[0].data();
+
+            if (!await bcryptjs.compare(password, userData.password)) {
+                throw new Error('Incorrect password');
+            }
+
+            await createSession(userData.uid);
+
+            const userDataToReturn = { ...userData };
+            delete userDataToReturn.password;
+            setUser(userDataToReturn);
+
+            return userDataToReturn;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    const loginWithGoogle = async () => {
+        setError('Google sign-in not implemented with custom auth solution');
+        throw new Error('Google sign-in not implemented with custom auth solution');
+    };
+
+    const resetPassword = async (email) => {
+        setError(null);
+        try {
+            const usersRef = collection(db, USERS_COLLECTION);
+            const q = query(usersRef, where('email', '==', email));
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                throw new Error('No user found with this email');
+            }
+
+            const newPassword = Math.random().toString(36).slice(-8);
+            const hashedPassword = await bcryptjs.hash(newPassword, 10);
+
+            await updateDoc(querySnapshot.docs[0].ref, {
+                password: hashedPassword
             });
 
-            return userCredential.user;
-        } catch (error) {
-            throw error;
-        }
-    };
-
-    // Logout function
-    const logout = async () => {
-        try {
-            await firebaseSignOut(auth);
-            setUser(null);
-            setAuthToken(null);
-            localStorage.removeItem('authToken');
-            router.push('/auth');
-        } catch (error) {
-            console.error('Logout error:', error);
-        }
-    };
-
-    // Send password reset email
-    const sendPasswordReset = async (email) => {
-        try {
-            await sendPasswordResetEmail(auth, email);
+            console.log('New password:', newPassword);
             return true;
-        } catch (error) {
-            throw error;
+        } catch (err) {
+            setError(err.message);
+            throw err;
         }
     };
 
-    // Check if user is authenticated
-    const isAuthenticated = () => {
-        return !!user && !!authToken;
-    };
-
-    // Check if token is valid (simple check - not a full verification)
-    const isTokenValid = () => {
-        if (!authToken) return false;
-
-        // JWT tokens have 3 parts separated by dots
-        const parts = authToken.split('.');
-        if (parts.length !== 3) return false;
-
+    const updateUserProfile = async (userData) => {
+        setError(null);
         try {
-            // Decode the payload (middle part)
-            const payload = JSON.parse(atob(parts[1]));
+            if (!user) {
+                throw new Error('No authenticated user');
+            }
 
-            // Check expiration
-            const expiryTime = payload.exp * 1000; // Convert to milliseconds
-            const currentTime = Date.now();
+            const userRef = doc(db, USERS_COLLECTION, user.uid);
+            delete userData.password;
 
-            return currentTime < expiryTime;
-        } catch (e) {
-            return false;
+            await updateDoc(userRef, userData);
+            setUser({ ...user, ...userData });
+
+            return true;
+        } catch (err) {
+            setError(err.message);
+            throw err;
         }
     };
 
-    // Get current auth token for API requests
-    const getToken = () => authToken;
+    // Enhanced logout function with proper cleanup
+    const logout = async () => {
+        setError(null);
+        try {
+            const sessionId = localStorage.getItem('sessionId');
 
-    // Context value
-    const value = {
-        user,
-        loading,
-        login,
-        signup,
-        logout,
-        sendPasswordReset,
-        isAuthenticated,
-        isTokenValid,
-        getToken
+            if (sessionId) {
+                // Delete session from Firestore
+                await deleteDoc(doc(db, SESSIONS_COLLECTION, sessionId));
+                // Remove session from localStorage
+                localStorage.removeItem('sessionId');
+            }
+
+            // Clear user state
+            setUser(null);
+            return true;
+        } catch (err) {
+            console.error('Logout error:', err);
+            setError(err.message);
+            throw err;
+        }
     };
 
     return (
-        <AuthContext.Provider value={value}>
-            {!loading && children}
+        <AuthContext.Provider value={{
+            user,
+            loading,
+            error,
+            signup,
+            login,
+            loginWithGoogle,
+            logout,
+            resetPassword,
+            getCurrentUser: () => user,
+            updateUserProfile,
+            isAuthenticated: () => !!user,
+            // sendVerificationEmail,
+            // verifyEmail
+        }}>
+            {!loading ? children : <div>Loading...</div>}
         </AuthContext.Provider>
     );
 };

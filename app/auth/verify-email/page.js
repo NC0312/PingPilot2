@@ -2,120 +2,210 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/app/context/AuthContext';
-import { Mail, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Server, AlertTriangle, Check, MailCheck, RefreshCw } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import Link from 'next/link';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../firebase/config';
+
+const USERS_COLLECTION = 'users';
 
 export default function VerifyEmailPage() {
-    const [verifying, setVerifying] = useState(true);
-    const [success, setSuccess] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [verifying, setVerifying] = useState(false);
     const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(false);
 
-    const searchParams = useSearchParams();
     const router = useRouter();
-    const { verifyEmailCode } = useAuth();
+    const searchParams = useSearchParams();
+    const { user } = useAuth();
 
+    // Get token and userId from URL params
+    const token = searchParams.get('token');
+    const userId = searchParams.get('userId');
+
+    // Verify email token on page load
     useEffect(() => {
         const verifyEmail = async () => {
-            const oobCode = searchParams.get('oobCode');
+            setLoading(true);
 
-            if (!oobCode) {
-                setError('Invalid verification link. No verification code found.');
-                setVerifying(false);
+            if (!token || !userId) {
+                setError('Invalid verification link. Please try again or request a new verification email.');
+                setLoading(false);
                 return;
             }
 
             try {
-                await verifyEmailCode(oobCode);
-                setSuccess(true);
-                // Redirect to dashboard after 3 seconds
-                setTimeout(() => {
-                    router.push('/dashboard');
-                }, 3000);
-            } catch (error) {
-                console.error('Error verifying email:', error);
-                let errorMessage = 'Failed to verify your email. The link may have expired or already been used.';
+                // Get user data
+                const userRef = doc(db, USERS_COLLECTION, userId);
+                const userSnap = await getDoc(userRef);
 
-                if (error.code) {
-                    switch (error.code) {
-                        case 'auth/invalid-action-code':
-                            errorMessage = 'The verification link is invalid or has expired.';
-                            break;
-                        case 'auth/user-not-found':
-                            errorMessage = 'User account not found.';
-                            break;
-                        default:
-                            errorMessage = error.message || 'Failed to verify your email.';
-                    }
+                if (!userSnap.exists()) {
+                    setError('User not found. Please check your verification link.');
+                    setLoading(false);
+                    return;
                 }
 
-                setError(errorMessage);
+                const userData = userSnap.data();
+
+                // Check if token matches and is not expired
+                if (userData.verificationToken !== token) {
+                    setError('Invalid verification token. Please request a new verification email.');
+                    setLoading(false);
+                    return;
+                }
+
+                if (!userData.verificationTokenExpiry || userData.verificationTokenExpiry < Date.now()) {
+                    setError('Verification link has expired. Please request a new verification email.');
+                    setLoading(false);
+                    return;
+                }
+
+                // Update user as verified
+                await updateDoc(userRef, {
+                    emailVerified: true,
+                    verificationToken: null,
+                    verificationTokenExpiry: null
+                });
+
+                setSuccess(true);
+            } catch (err) {
+                console.error('Email verification error:', err);
+                setError('Failed to verify email. The link may have expired or is invalid.');
             } finally {
-                setVerifying(false);
+                setLoading(false);
             }
         };
 
         verifyEmail();
-    }, [searchParams, verifyEmailCode, router]);
+    }, [token, userId]);
+
+    // Function to resend verification email
+    const resendVerification = async () => {
+        if (!user) {
+            setError('You need to be logged in to resend verification.');
+            return;
+        }
+
+        setVerifying(true);
+        setError(null);
+
+        try {
+            // In a real app, you would implement this functionality
+            // in your AuthContext to send a new verification email
+
+            // Simulate success for this example
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            setSuccess(true);
+        } catch (err) {
+            console.error('Resend verification error:', err);
+            setError('Failed to send verification email. Please try again.');
+        } finally {
+            setVerifying(false);
+        }
+    };
 
     return (
         <div className="min-h-screen flex flex-col justify-center items-center bg-[#031D27] px-4 py-12">
-            <div className="bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-8 text-center">
-                {verifying && (
-                    <div className="flex flex-col items-center justify-center">
-                        <Loader className="h-12 w-12 text-blue-500 animate-spin mb-4" />
-                        <h2 className="text-xl font-semibold text-white mb-2">
-                            Verifying your email
-                        </h2>
-                        <p className="text-gray-400">
-                            Please wait while we verify your email address...
-                        </p>
-                    </div>
-                )}
+            <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
+                <Server size={28} className="text-white" />
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-2">Ping Pilot</h1>
+            <p className="text-blue-300 mb-8">Server monitoring made simple</p>
 
-                {!verifying && success && (
-                    <div className="flex flex-col items-center justify-center">
-                        <div className="w-16 h-16 bg-green-900/30 rounded-full flex items-center justify-center mb-4">
-                            <CheckCircle className="h-10 w-10 text-green-500" />
-                        </div>
-                        <h2 className="text-xl font-semibold text-white mb-2">
-                            Email Verified!
-                        </h2>
-                        <p className="text-gray-400 mb-4">
-                            Your email has been successfully verified. You can now access all features of Ping Pilot.
-                        </p>
-                        <p className="text-blue-400 text-sm">
-                            Redirecting to dashboard in a few seconds...
-                        </p>
+            <div className="bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-8">
+                <div className="flex justify-center mb-6">
+                    <div className="w-16 h-16 bg-blue-600/20 rounded-full flex items-center justify-center">
+                        <MailCheck size={32} className="text-blue-400" />
                     </div>
-                )}
+                </div>
 
-                {!verifying && error && (
-                    <div className="flex flex-col items-center justify-center">
-                        <div className="w-16 h-16 bg-red-900/30 rounded-full flex items-center justify-center mb-4">
-                            <AlertTriangle className="h-10 w-10 text-red-500" />
-                        </div>
-                        <h2 className="text-xl font-semibold text-white mb-2">
-                            Verification Failed
-                        </h2>
-                        <p className="text-gray-400 mb-6">
-                            {error}
-                        </p>
-                        <div className="flex flex-col space-y-3">
-                            <button
-                                onClick={() => router.push('/auth')}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg"
-                            >
-                                Return to Login
-                            </button>
-                            <button
-                                onClick={() => router.push('/dashboard')}
-                                className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg"
-                            >
-                                Go to Dashboard
-                            </button>
-                        </div>
+                <h2 className="text-xl font-semibold text-white text-center mb-2">
+                    Email Verification
+                </h2>
+
+                {loading ? (
+                    <div className="flex flex-col items-center justify-center py-8">
+                        <svg className="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p className="text-gray-300">Verifying your email address...</p>
                     </div>
+                ) : (
+                    <>
+                        {error && (
+                            <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4 flex items-start">
+                                <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
+                                <p className="text-red-200 text-sm">{error}</p>
+                            </div>
+                        )}
+
+                        {success ? (
+                            <div className="text-center">
+                                <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-4 mb-6">
+                                    <Check className="text-green-500 mx-auto mb-2" size={24} />
+                                    <p className="text-green-200 text-sm">
+                                        Your email has been successfully verified!
+                                        You can now access all features of your account.
+                                    </p>
+                                </div>
+
+                                <Link
+                                    href="/"
+                                    className="w-full bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center block mb-3"
+                                >
+                                    Go to Dashboard
+                                </Link>
+
+                                <Link
+                                    href="/auth"
+                                    className="text-blue-400 hover:text-blue-300 text-sm"
+                                >
+                                    Return to Login
+                                </Link>
+                            </div>
+                        ) : (
+                            <div className="text-center">
+                                <p className="text-gray-400 mb-6">
+                                    {token && userId
+                                        ? "We're having trouble verifying your email. Please try again or request a new verification link."
+                                        : "Please verify your email address to access all features."}
+                                </p>
+
+                                <button
+                                    onClick={resendVerification}
+                                    disabled={verifying}
+                                    className={`w-full ${verifying ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} 
+                                    focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors mb-4`}
+                                >
+                                    {verifying ? (
+                                        <div className="flex justify-center items-center">
+                                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Sending...
+                                        </div>
+                                    ) : (
+                                        <div className="flex justify-center items-center">
+                                            <RefreshCw size={16} className="mr-2" />
+                                            Resend Verification Email
+                                        </div>
+                                    )}
+                                </button>
+
+                                <Link
+                                    href="/auth"
+                                    className="text-blue-400 hover:text-blue-300 text-sm"
+                                >
+                                    Return to Login
+                                </Link>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>
