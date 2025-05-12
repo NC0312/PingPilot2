@@ -148,7 +148,7 @@ export default function AuthPage() {
     );
 
     return (
-        <div className="min-h-screen flex flex-col justify-center items-center bg-[#031D27] px-4 py-12">
+        <div className="min-h-screen w-full flex flex-col justify-center items-center bg-[#031D27] px-4 py-12">
             <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
                 <Server size={28} className="text-white" />
             </div>

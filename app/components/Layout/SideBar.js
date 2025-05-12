@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/app/context/AuthContext';
 import { Home, Server, Bell, User, LogOut, Menu, X, BarChart4, Users, Settings } from 'lucide-react';
 
-const Navbar = () => {
+const SideBar = () => {
     const { user, logout } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -37,7 +37,7 @@ const Navbar = () => {
     return (
         <>
             {/* Desktop Sidebar */}
-            <div className="hidden md:flex flex-col w-64 bg-[#031D27] text-white h-screen fixed">
+            <div className="hidden md:flex flex-col w-64 bg-[#031D27] text-white h-screen">
                 <div className="p-5 border-b border-gray-700">
                     <div className="flex items-center">
                         {/* <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
@@ -113,7 +113,7 @@ const Navbar = () => {
             </div>
 
             {/* Mobile Header */}
-            <div className="md:hidden bg-[#031D27] text-white fixed w-full top-0 z-10">
+            <div className="md:hidden bg-[#031D27] text-white w-full top-0 z-10 sticky">
                 <div className="flex items-center justify-between p-4">
                     <div className="flex items-center">
                         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-2">
@@ -192,4 +192,4 @@ const Navbar = () => {
     );
 };
 
-export default Navbar;
+export default SideBar;
