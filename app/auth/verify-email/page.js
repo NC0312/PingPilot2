@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Server, AlertTriangle, Check, MailCheck, RefreshCw } from 'lucide-react';
+import { Server, AlertTriangle, Check, MailCheck, RefreshCw, LogIn } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Link from 'next/link';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
@@ -19,7 +19,7 @@ export default function VerifyEmailPage() {
 
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user } = useAuth();
+    const { user, resendVerificationEmail } = useAuth();
 
     // Get token and userId from URL params
     const token = searchParams.get('token');
@@ -31,14 +31,16 @@ export default function VerifyEmailPage() {
             setLoading(true);
 
             if (!token || !userId) {
-                setError('Invalid verification link. Please try again or request a new verification email.');
+                // No token - just showing the verification needed page
                 setLoading(false);
                 return;
             }
 
             try {
                 // Get user data
-                const userRef = doc(db, USERS_COLLECTION, userId);
+                const userRef = doc(db, USERS_COLLECTION, userId
+
+                );
                 const userSnap = await getDoc(userRef);
 
                 if (!userSnap.exists()) {
@@ -50,7 +52,7 @@ export default function VerifyEmailPage() {
                 const userData = userSnap.data();
 
                 // Check if token matches and is not expired
-                if (userData.verificationToken !== token) {
+                if (userData.token !== token) {
                     setError('Invalid verification token. Please request a new verification email.');
                     setLoading(false);
                     return;
@@ -86,9 +88,9 @@ export default function VerifyEmailPage() {
     }, [token, userId]);
 
     // Function to resend verification email
-    const resendVerification = async () => {
+    const handleResendVerification = async () => {
         if (!user) {
-            setError('You need to be logged in to resend verification.');
+            router.push('/auth');
             return;
         }
 
@@ -96,24 +98,7 @@ export default function VerifyEmailPage() {
         setError(null);
 
         try {
-            // Call the API to resend verification email
-            const response = await fetch('/api/verify-email', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: user.email,
-                    name: user.displayName || '',
-                }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to send verification email');
-            }
-
+            await resendVerificationEmail();
             setSuccess(true);
         } catch (err) {
             console.error('Resend verification error:', err);
@@ -139,7 +124,7 @@ export default function VerifyEmailPage() {
                 </div>
 
                 <h2 className="text-xl font-semibold text-white text-center mb-2">
-                    Email Verification
+                    {token && userId ? 'Email Verification' : 'Verification Required'}
                 </h2>
 
                 {loading ? (
@@ -164,23 +149,20 @@ export default function VerifyEmailPage() {
                                 <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-4 mb-6">
                                     <Check className="text-green-500 mx-auto mb-2" size={24} />
                                     <p className="text-green-200 text-sm">
-                                        Your email has been successfully verified!
-                                        You can now access all features of your account.
+                                        {token && userId
+                                            ? 'Your email has been successfully verified! You can now access all features of your account.'
+                                            : 'Verification email sent! Please check your inbox to confirm your email address.'}
                                     </p>
                                 </div>
 
                                 <Link
-                                    href="/"
+                                    href="/auth"
                                     className="w-full bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center block mb-3"
                                 >
-                                    Go to Dashboard
-                                </Link>
-
-                                <Link
-                                    href="/auth"
-                                    className="text-blue-400 hover:text-blue-300 text-sm"
-                                >
-                                    Return to Login
+                                    <div className="flex justify-center items-center">
+                                        <LogIn size={16} className="mr-2" />
+                                        Go to Login
+                                    </div>
                                 </Link>
                             </div>
                         ) : (
@@ -188,11 +170,11 @@ export default function VerifyEmailPage() {
                                 <p className="text-gray-400 mb-6">
                                     {token && userId
                                         ? "We're having trouble verifying your email. Please try again or request a new verification link."
-                                        : "Please verify your email address to access all features."}
+                                        : "Please verify your email address to access all features. Check your inbox for the verification link."}
                                 </p>
 
                                 <button
-                                    onClick={resendVerification}
+                                    onClick={handleResendVerification}
                                     disabled={verifying}
                                     className={`w-full ${verifying ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} 
                                     focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors mb-4`}

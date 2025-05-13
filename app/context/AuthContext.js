@@ -233,8 +233,42 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('Incorrect password');
             }
 
+            // Check if the email is verified
+            if (!userData.emailVerified) {
+                throw new Error('email_not_verified');
+            }
+
             await createSession(userData.uid);
 
+            const userDataToReturn = { ...userData };
+            delete userDataToReturn.password;
+            setUser(userDataToReturn);
+
+            return userDataToReturn;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    const loginWithoutVerification = async (email, password) => {
+        setError(null);
+        try {
+            const usersRef = collection(db, USERS_COLLECTION);
+            const q = query(usersRef, where('email', '==', email));
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                throw new Error('No user found with this email');
+            }
+
+            const userData = querySnapshot.docs[0].data();
+
+            if (!await bcryptjs.compare(password, userData.password)) {
+                throw new Error('Incorrect password');
+            }
+
+            // Set user without creating a session
             const userDataToReturn = { ...userData };
             delete userDataToReturn.password;
             setUser(userDataToReturn);
@@ -377,7 +411,8 @@ export const AuthProvider = ({ children }) => {
             sendVerificationEmail,
             verifyEmail,
             resendVerificationEmail,
-            checkEmailVerification
+            checkEmailVerification,
+            loginWithoutVerification
         }}>
             {!loading ? children : <div>Loading...</div>}
         </AuthContext.Provider>

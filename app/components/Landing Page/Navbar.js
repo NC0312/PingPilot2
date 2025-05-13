@@ -114,13 +114,15 @@ const Navbar = () => {
                                 </a>
                             </motion.div>
                         ))}
-                        <motion.button
-                            whileHover={{ scale: 1.05, backgroundColor: "#2563eb" }}
-                            whileTap={{ scale: 0.95 }}
-                            className='px-4 py-2 font-mono bg-blue-600 text-white rounded-lg'
-                        >
-                            Sign In
-                        </motion.button>
+                        <Link href="/auth">
+                            <motion.button
+                                whileHover={{ scale: 1.05, backgroundColor: "#2563eb" }}
+                                whileTap={{ scale: 0.95 }}
+                                className='px-4 py-2 font-mono bg-blue-600 text-white rounded-lg'
+                            >
+                                Sign In
+                            </motion.button>
+                        </Link>
                     </motion.div>
                 )}
             </nav>

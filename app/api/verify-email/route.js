@@ -14,7 +14,7 @@ const dnsLookup = promisify(dns.lookup);
 
 export async function POST(req) {
     try {
-        const { email, name } = await req.json();
+        const { email, name, userId } = await req.json();
         console.log('Validating email:', email);
 
         // 1. Basic format validation
@@ -96,26 +96,30 @@ export async function POST(req) {
 
         // 6. Generate verification token and store in Firebase
         const token = uuidv4();
-        const userId = uuidv4(); // In a real implementation, this would be the actual user ID
+        const expiryTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        try {
+            const userRef = doc(db, 'users', userId);
+            await updateDoc(userRef, {
+                verificationToken: token,
+                verificationTokenExpiry: expiryTime.getTime(),
+                updatedAt: new Date().toISOString()
+            });
+            console.log(`User document updated with verification token`);
+        } catch (userUpdateError) {
+            console.error('Error updating user with verification token:', userUpdateError);
+            // Continue to store in emailVerifications as fallback
+        }
+
         const verificationData = {
             email,
             userId,
             token,
             createdAt: new Date().toISOString(),
             used: false,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours expiry
+            expiresAt: expiryTime.toISOString(),
         };
 
-        try {
-            await addDoc(collection(db, 'emailVerifications'), verificationData);
-            console.log(`Verification token stored for ${email}: ${token}`);
-        } catch (firebaseError) {
-            console.error('Failed to store verification token:', firebaseError);
-            return NextResponse.json(
-                { error: 'Failed to process verification', type: 'firebase_error', details: firebaseError.message },
-                { status: 500 }
-            );
-        }
+        await addDoc(collection(db, 'emailVerifications'), verificationData);
 
         // 7. SMTP configuration check
         if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASSWORD || !process.env.SMTP_FROM_EMAIL) {

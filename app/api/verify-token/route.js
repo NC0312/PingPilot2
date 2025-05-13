@@ -32,7 +32,56 @@ export async function GET(request) {
             );
         }
 
-        // Check if the verification record exists
+        // First, check for verification token in users collection directly
+        const userRef = doc(db, 'users', userId);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+            const userData = userSnap.data();
+
+            // Check if this is a verification token
+            if (userData.verificationToken === token) {
+                // Check if token is expired
+                const verificationExpiry = userData.verificationTokenExpiry;
+                if (verificationExpiry && verificationExpiry < Date.now()) {
+                    return NextResponse.json(
+                        { error: 'Verification link has expired', type: 'token_expired' },
+                        { status: 400 }
+                    );
+                }
+
+                // Mark email as verified
+                await updateDoc(userRef, {
+                    emailVerified: true,
+                    verificationToken: null,
+                    verificationTokenExpiry: null,
+                    updatedAt: new Date().toISOString()
+                });
+
+                console.log(`User ${userId} email verified successfully`);
+
+                // Redirect to the email verification success page
+                const successPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/auth/verify-email?success=true`;
+                return NextResponse.redirect(successPageUrl);
+            }
+
+            // Check if this is a password reset token
+            if (userData.resetToken === token) {
+                // Check if token is expired
+                if (userData.resetTokenExpiry && userData.resetTokenExpiry < Date.now()) {
+                    return NextResponse.json(
+                        { error: 'Reset token has expired', type: 'token_expired' },
+                        { status: 400 }
+                    );
+                }
+
+                // Redirect to the password reset page (the token will be verified again there)
+                const resetPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/auth/reset-password?token=${token}&userId=${userId}`;
+                return NextResponse.redirect(resetPageUrl);
+            }
+        }
+
+        // If we get here, check the emailVerifications collection as fallback (for backward compatibility)
         const verificationQuery = query(
             collection(db, 'emailVerifications'),
             where('token', '==', token),
@@ -76,28 +125,19 @@ export async function GET(request) {
 
         // Update the user's emailVerified status in Firestore
         try {
-            // Get user from Firestore
-            const userRef = doc(db, 'users', userId);
-            const userSnap = await getDoc(userRef);
-
-            if (userSnap.exists()) {
-                // Update user data with verified email status
-                await updateDoc(userRef, {
-                    emailVerified: true,
-                    updatedAt: new Date().toISOString()
-                });
-                console.log(`User ${userId} email verified successfully`);
-            } else {
-                console.warn(`User ${userId} not found but verification processed`);
-                // Still return success as the verification itself was valid
-            }
+            // Update user data with verified email status
+            await updateDoc(userRef, {
+                emailVerified: true,
+                updatedAt: new Date().toISOString()
+            });
+            console.log(`User ${userId} email verified successfully`);
         } catch (userUpdateError) {
             console.error('Error updating user:', userUpdateError);
-            // We'll still return success, as the verification itself was successful
+            // Still return success as the verification itself was successful
         }
 
         // Redirect to the email verification success page
-        const successPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/auth/verify-email`;
+        const successPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/auth/verify-email?success=true`;
 
         // Return a redirect response
         return NextResponse.redirect(successPageUrl);
