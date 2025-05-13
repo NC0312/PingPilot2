@@ -1,4 +1,4 @@
-// app/api/verify-token/route.js
+// Debug version of app/api/verify-token/route.js
 import { NextResponse } from 'next/server';
 import { db } from '../../firebase/config';
 import {
@@ -19,6 +19,7 @@ export async function GET(request) {
         const userId = url.searchParams.get('userId');
 
         if (!token) {
+            console.error('Token is required but missing');
             return NextResponse.json(
                 { error: 'Token is required', type: 'missing_token' },
                 { status: 400 }
@@ -26,6 +27,7 @@ export async function GET(request) {
         }
 
         if (!userId) {
+            console.error('User ID is required but missing');
             return NextResponse.json(
                 { error: 'User ID is required', type: 'missing_user_id' },
                 { status: 400 }
@@ -39,8 +41,10 @@ export async function GET(request) {
         if (userSnap.exists()) {
             const userData = userSnap.data();
 
-            // Check if this is a verification token
-            if (userData.verificationToken === token) {
+            // Check if this is a verification token - check both possible property names
+            if (userData.verificationToken === token || userData.token === token) {
+                const tokenProperty = userData.verificationToken === token ? 'verificationToken' : 'token';
+
                 // Check if token is expired
                 const verificationExpiry = userData.verificationTokenExpiry;
                 if (verificationExpiry && verificationExpiry < Date.now()) {
@@ -50,15 +54,18 @@ export async function GET(request) {
                     );
                 }
 
-                // Mark email as verified
-                await updateDoc(userRef, {
+                // Mark email as verified and clear verification tokens
+                const updateData = {
                     emailVerified: true,
-                    verificationToken: null,
-                    verificationTokenExpiry: null,
                     updatedAt: new Date().toISOString()
-                });
+                };
 
-                console.log(`User ${userId} email verified successfully`);
+                // Clear both possible token property names
+                updateData.verificationToken = null;
+                updateData.token = null;
+                updateData.verificationTokenExpiry = null;
+
+                await updateDoc(userRef, updateData);
 
                 // Redirect to the email verification success page
                 const successPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/auth/verify-email?success=true`;
@@ -79,6 +86,10 @@ export async function GET(request) {
                 const resetPageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ''}/auth/reset-password?token=${token}&userId=${userId}`;
                 return NextResponse.redirect(resetPageUrl);
             }
+
+            console.error('Token did not match any known token type');
+        } else {
+            console.error('User not found:', userId);
         }
 
         // If we get here, check the emailVerifications collection as fallback (for backward compatibility)
@@ -117,7 +128,6 @@ export async function GET(request) {
             );
         }
 
-        // Mark the token as used
         await updateDoc(verificationDoc.ref, {
             used: true,
             usedAt: new Date().toISOString()
@@ -125,12 +135,10 @@ export async function GET(request) {
 
         // Update the user's emailVerified status in Firestore
         try {
-            // Update user data with verified email status
             await updateDoc(userRef, {
                 emailVerified: true,
                 updatedAt: new Date().toISOString()
             });
-            console.log(`User ${userId} email verified successfully`);
         } catch (userUpdateError) {
             console.error('Error updating user:', userUpdateError);
             // Still return success as the verification itself was successful

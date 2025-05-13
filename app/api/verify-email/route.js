@@ -1,11 +1,11 @@
-// app/api/verify-email/route.js
+// Debug version of app/api/verify-email/route.js with fixed imports
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import dns from 'dns';
 import axios from 'axios';
 import { promisify } from 'util';
 import { db } from '../../firebase/config';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc } from 'firebase/firestore'; // Added missing doc import
 import { v4 as uuidv4 } from 'uuid';
 
 // Promisify DNS methods
@@ -15,7 +15,6 @@ const dnsLookup = promisify(dns.lookup);
 export async function POST(req) {
     try {
         const { email, name, userId } = await req.json();
-        console.log('Validating email:', email);
 
         // 1. Basic format validation
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -28,12 +27,10 @@ export async function POST(req) {
 
         // 2. Extract domain
         const domain = email.split('@')[1].toLowerCase();
-        console.log('Extracted domain:', domain);
 
         // 3. Check domain existence with DNS lookup
         try {
             const lookupResult = await dnsLookup(domain);
-            console.log(`DNS lookup successful for ${domain}:`, lookupResult);
         } catch (lookupError) {
             console.error(`DNS lookup failed for ${domain}:`, lookupError);
             return NextResponse.json(
@@ -46,13 +43,11 @@ export async function POST(req) {
         try {
             const mxRecords = await resolveMx(domain);
             if (!mxRecords || mxRecords.length === 0) {
-                console.log(`No MX records found for ${domain}`);
                 return NextResponse.json(
                     { error: 'Email domain cannot receive mail', type: 'no_mx_records' },
                     { status: 400 }
                 );
             }
-            console.log(`MX records for ${domain}:`, mxRecords);
         } catch (mxError) {
             console.error(`MX lookup failed for ${domain}:`, mxError);
             return NextResponse.json(
@@ -67,12 +62,10 @@ export async function POST(req) {
             const abstractResponse = await axios.get(
                 `https://emailvalidation.abstractapi.com/v1/?api_key=${apiKey}&email=${email}`
             );
-            console.log(`AbstractAPI response for ${email}:`, abstractResponse.data);
 
             const { is_valid_format, is_smtp_valid, is_disposable_email, deliverability } = abstractResponse.data;
 
             if (!is_valid_format.value || is_disposable_email.value) {
-                console.log(`Email ${email} rejected: invalid format or disposable`);
                 return NextResponse.json(
                     { error: 'Invalid or disposable email address', type: 'invalid_email' },
                     { status: 400 }
@@ -80,31 +73,38 @@ export async function POST(req) {
             }
 
             if (!is_smtp_valid.value || deliverability !== 'DELIVERABLE') {
-                console.log(`Email ${email} rejected: SMTP invalid or undeliverable`);
                 return NextResponse.json(
                     { error: 'Email address does not exist or is undeliverable', type: 'undeliverable' },
                     { status: 400 }
                 );
             }
 
-            console.log(`Email ${email} passed AbstractAPI validation`);
         } catch (apiError) {
             console.error('AbstractAPI request failed:', apiError.message);
-            // Continue without third-party validation if service is unavailable
-            console.log('Proceeding without third-party validation');
         }
 
         // 6. Generate verification token and store in Firebase
         const token = uuidv4();
         const expiryTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
         try {
+            // Check if we have a valid userId
+            if (!userId) {
+                console.error('No userId provided for verification token update');
+                return NextResponse.json(
+                    { error: 'User ID is required', type: 'missing_user_id' },
+                    { status: 400 }
+                );
+            }
+
             const userRef = doc(db, 'users', userId);
+
+            // IMPORTANT: Log the token we're storing
+
             await updateDoc(userRef, {
                 verificationToken: token,
                 verificationTokenExpiry: expiryTime.getTime(),
                 updatedAt: new Date().toISOString()
             });
-            console.log(`User document updated with verification token`);
         } catch (userUpdateError) {
             console.error('Error updating user with verification token:', userUpdateError);
             // Continue to store in emailVerifications as fallback
@@ -147,7 +147,6 @@ export async function POST(req) {
 
         try {
             await transporter.verify();
-            console.log('SMTP connection verified successfully');
         } catch (verifyError) {
             console.error('SMTP connection verification failed:', verifyError);
             return NextResponse.json(
@@ -182,8 +181,6 @@ export async function POST(req) {
 
         try {
             const info = await transporter.sendMail(mailOptions);
-            console.log('Verification email sent successfully:', info.messageId);
-            console.log('SMTP response:', info.response);
 
             return NextResponse.json(
                 {

@@ -1,4 +1,4 @@
-// app/auth/verify-email/page.js
+// Debug version of app/auth/verify-email/page.js
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -16,6 +16,7 @@ export default function VerifyEmailPage() {
     const [verifying, setVerifying] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
+    const [debugInfo, setDebugInfo] = useState({});
 
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -25,9 +26,22 @@ export default function VerifyEmailPage() {
     const token = searchParams.get('token');
     const userId = searchParams.get('userId');
 
+    // Add success parameter detection
+    const isSuccess = searchParams.get('success') === 'true';
+
+    // Show success if directed from verify-token route
+    useEffect(() => {
+        if (isSuccess) {
+            setSuccess(true);
+            setLoading(false);
+        }
+    }, [isSuccess]);
+
     // Verify email token on page load
     useEffect(() => {
         const verifyEmail = async () => {
+            if (isSuccess) return; // Skip verification if success is in URL
+
             setLoading(true);
 
             if (!token || !userId) {
@@ -36,14 +50,14 @@ export default function VerifyEmailPage() {
                 return;
             }
 
+
             try {
                 // Get user data
-                const userRef = doc(db, USERS_COLLECTION, userId
-
-                );
+                const userRef = doc(db, USERS_COLLECTION, userId);
                 const userSnap = await getDoc(userRef);
 
                 if (!userSnap.exists()) {
+                    console.error("User document not found in Firestore");
                     setError('User not found. Please check your verification link.');
                     setLoading(false);
                     return;
@@ -51,14 +65,34 @@ export default function VerifyEmailPage() {
 
                 const userData = userSnap.data();
 
-                // Check if token matches and is not expired
-                if (userData.token !== token) {
+                // Check if token matches
+                // Try both property names to debug which one might be used
+                if (userData.verificationToken !== token && userData.token !== token) {
+                    console.error("Token mismatch. URL token:", token);
+                    console.error("DB verification token:", userData.verificationToken);
+                    console.error("DB token:", userData.token);
                     setError('Invalid verification token. Please request a new verification email.');
                     setLoading(false);
                     return;
                 }
 
-                if (!userData.verificationTokenExpiry || userData.verificationTokenExpiry < Date.now()) {
+                // Check token property that matched
+                const matchedTokenProperty = userData.verificationToken === token
+                    ? 'verificationToken'
+                    : userData.token === token ? 'token' : null;
+
+
+                // Check if token is expired
+                const tokenExpiry = userData.verificationTokenExpiry;
+                if (!tokenExpiry) {
+                    console.error("No token expiry found");
+                    setError('Invalid verification setup. Please request a new verification email.');
+                    setLoading(false);
+                    return;
+                }
+
+                if (tokenExpiry < Date.now()) {
+                    console.error("Token expired");
                     setError('Verification link has expired. Please request a new verification email.');
                     setLoading(false);
                     return;
@@ -68,6 +102,7 @@ export default function VerifyEmailPage() {
                 await updateDoc(userRef, {
                     emailVerified: true,
                     verificationToken: null,
+                    token: null, // Clear both possible properties
                     verificationTokenExpiry: null
                 });
 
@@ -80,12 +115,12 @@ export default function VerifyEmailPage() {
             }
         };
 
-        if (token && userId) {
+        if ((token && userId) && !isSuccess) {
             verifyEmail();
-        } else {
+        } else if (!isSuccess) {
             setLoading(false);
         }
-    }, [token, userId]);
+    }, [token, userId, isSuccess]);
 
     // Function to resend verification email
     const handleResendVerification = async () => {

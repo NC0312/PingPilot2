@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono, Poppins, Manrope } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./context/AuthContext";
+import SideBar from "./components/Layout/SideBar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,6 +41,7 @@ export default function RootLayout({ children }) {
         className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} ${manrope.variable} antialiased`}
       >
         <AuthProvider>
+          {/* <SideBar /> */}
           {children}
         </AuthProvider>
       </body>
