@@ -1,8 +1,6 @@
 import { Geist, Geist_Mono, Poppins, Manrope } from "next/font/google";
 import "./globals.css";
-import SideBar from "./components/Layout/SideBar";
 import { AuthProvider } from "./context/AuthContext";
-
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,10 +40,7 @@ export default function RootLayout({ children }) {
         className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} ${manrope.variable} antialiased`}
       >
         <AuthProvider>
-          {/* <div className="flex flex-col md:flex-row"> */}
-            {/* <SideBar /> */}
-            {children}
-          {/* </div> */}
+          {children}
         </AuthProvider>
       </body>
     </html>

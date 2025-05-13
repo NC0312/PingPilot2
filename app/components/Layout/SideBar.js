@@ -2,10 +2,14 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/app/context/AuthContext';
+import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Home, Server, Bell, User, LogOut, Menu, X, BarChart4, Users, Settings } from 'lucide-react';
 
 const SideBar = () => {
     const { user, logout } = useAuth();
+    const router = useRouter();
+    const pathname = usePathname();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const toggleMobileMenu = () => {
@@ -15,7 +19,7 @@ const SideBar = () => {
     const handleLogout = async () => {
         try {
             await logout();
-            // Redirect will be handled by the auth context
+            router.push('/');
         } catch (error) {
             console.error('Logout failed:', error);
         }
@@ -23,7 +27,7 @@ const SideBar = () => {
 
     // Navigation items based on user role
     const navItems = [
-        { name: 'Dashboard', icon: <Home size={20} />, href: '/' },
+        { name: 'Dashboard', icon: <Home size={20} />, href: '/dashboard' },
         { name: 'Servers', icon: <Server size={20} />, href: '/servers' },
         { name: 'Alerts', icon: <Bell size={20} />, href: '/alerts' },
     ];
@@ -37,28 +41,29 @@ const SideBar = () => {
     return (
         <>
             {/* Desktop Sidebar */}
-            <div className="hidden md:flex flex-col w-64 bg-[#031D27] text-white h-screen">
+            <div className="hidden md:flex flex-col w-64 bg-[#031D27] text-white h-screen fixed">
                 <div className="p-5 border-b border-gray-700">
                     <div className="flex items-center">
-                        {/* <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                            <Server size={24} />
-                        </div> */}
-                        {/* <h1 className="text-xl font-bold">Ping Pilott</h1> */}
-                        <img src='/logo.png'/>
+                        <img src='/logo.png' alt="Ping Pilott Logo" />
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4">
                     <nav className="space-y-1">
                         {navItems.map((item) => (
-                            <a
+                            <Link
                                 key={item.name}
                                 href={item.href}
-                                className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
+                                className={`flex items-center px-4 py-3 rounded-md transition-colors ${pathname === item.href
+                                        ? 'bg-blue-600 text-white'
+                                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                    }`}
                             >
-                                <span className="mr-3 text-gray-400">{item.icon}</span>
+                                <span className={`mr-3 ${pathname === item.href ? 'text-white' : 'text-gray-400'}`}>
+                                    {item.icon}
+                                </span>
                                 {item.name}
-                            </a>
+                            </Link>
                         ))}
 
                         {adminItems.length > 0 && (
@@ -69,14 +74,19 @@ const SideBar = () => {
                                     </h3>
                                 </div>
                                 {adminItems.map((item) => (
-                                    <a
+                                    <Link
                                         key={item.name}
                                         href={item.href}
-                                        className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
+                                        className={`flex items-center px-4 py-3 rounded-md transition-colors ${pathname === item.href
+                                                ? 'bg-blue-600 text-white'
+                                                : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                            }`}
                                     >
-                                        <span className="mr-3 text-gray-400">{item.icon}</span>
+                                        <span className={`mr-3 ${pathname === item.href ? 'text-white' : 'text-gray-400'}`}>
+                                            {item.icon}
+                                        </span>
                                         {item.name}
-                                    </a>
+                                    </Link>
                                 ))}
                             </>
                         )}
@@ -91,7 +101,7 @@ const SideBar = () => {
                             </div>
                         </div>
                         <div className="ml-3">
-                            <p className="text-sm font-medium">{user ? user.name || user.email : 'User'}</p>
+                            <p className="text-sm font-medium">{user ? user.displayName || user.email : 'User'}</p>
                             <p className="text-xs text-gray-400">{user?.role || 'User'}</p>
                         </div>
                         <button
@@ -102,13 +112,16 @@ const SideBar = () => {
                             <LogOut size={20} />
                         </button>
                     </div>
-                    <a
+                    <Link
                         href="/settings"
-                        className="flex items-center mt-4 px-4 py-2 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md text-sm transition-colors"
+                        className={`flex items-center mt-4 px-4 py-2 rounded-md text-sm transition-colors ${pathname === '/settings'
+                                ? 'bg-blue-600 text-white'
+                                : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                            }`}
                     >
                         <Settings size={16} className="mr-2" />
                         Settings
-                    </a>
+                    </Link>
                 </div>
             </div>
 
@@ -136,15 +149,20 @@ const SideBar = () => {
                 <div className="md:hidden fixed inset-0 z-20 bg-[#031D27] pt-16">
                     <nav className="p-4">
                         {navItems.map((item) => (
-                            <a
+                            <Link
                                 key={item.name}
                                 href={item.href}
-                                className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
+                                className={`flex items-center px-4 py-3 rounded-md transition-colors ${pathname === item.href
+                                        ? 'bg-blue-600 text-white'
+                                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                    }`}
                                 onClick={() => setIsMobileMenuOpen(false)}
                             >
-                                <span className="mr-3 text-gray-400">{item.icon}</span>
+                                <span className={`mr-3 ${pathname === item.href ? 'text-white' : 'text-gray-400'}`}>
+                                    {item.icon}
+                                </span>
                                 {item.name}
-                            </a>
+                            </Link>
                         ))}
 
                         {adminItems.length > 0 && (
@@ -155,30 +173,43 @@ const SideBar = () => {
                                     </h3>
                                 </div>
                                 {adminItems.map((item) => (
-                                    <a
+                                    <Link
                                         key={item.name}
                                         href={item.href}
-                                        className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
+                                        className={`flex items-center px-4 py-3 rounded-md transition-colors ${pathname === item.href
+                                                ? 'bg-blue-600 text-white'
+                                                : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                            }`}
                                         onClick={() => setIsMobileMenuOpen(false)}
                                     >
-                                        <span className="mr-3 text-gray-400">{item.icon}</span>
+                                        <span className={`mr-3 ${pathname === item.href ? 'text-white' : 'text-gray-400'}`}>
+                                            {item.icon}
+                                        </span>
                                         {item.name}
-                                    </a>
+                                    </Link>
                                 ))}
                             </>
                         )}
 
                         <div className="pt-4 mt-4 border-t border-gray-700">
-                            <a
+                            <Link
                                 href="/settings"
-                                className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
+                                className={`flex items-center px-4 py-3 rounded-md transition-colors ${pathname === '/settings'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                    }`}
                                 onClick={() => setIsMobileMenuOpen(false)}
                             >
-                                <span className="mr-3 text-gray-400"><Settings size={20} /></span>
+                                <span className={`mr-3 ${pathname === '/settings' ? 'text-white' : 'text-gray-400'}`}>
+                                    <Settings size={20} />
+                                </span>
                                 Settings
-                            </a>
+                            </Link>
                             <button
-                                onClick={handleLogout}
+                                onClick={() => {
+                                    setIsMobileMenuOpen(false);
+                                    handleLogout();
+                                }}
                                 className="w-full flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 hover:text-white rounded-md transition-colors"
                             >
                                 <span className="mr-3 text-gray-400"><LogOut size={20} /></span>

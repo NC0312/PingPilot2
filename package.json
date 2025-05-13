@@ -13,6 +13,7 @@
     "bcryptjs": "^3.0.2",
     "dns": "^0.1.2",
     "firebase": "^11.7.1",
+    "framer-motion": "^12.11.0",
     "lucide-react": "^0.509.0",
     "next": "15.3.2",
     "nodemailer": "^7.0.3",
