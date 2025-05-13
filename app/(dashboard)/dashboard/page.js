@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Bell, Server, Settings, Plus, Clock, ArrowUpDown, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 
 const Dashboard = () => {
   const [servers, setServers] = useState([]);
@@ -61,10 +62,12 @@ const Dashboard = () => {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-2xl font-bold">Server Dashboard</h1>
           <div className="flex space-x-3">
-            <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded flex items-center cursor-pointer">
-              <Plus size={18} className="mr-2" />
-              Add Server
-            </button>
+            <Link href="/servers/new">
+              <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded flex items-center cursor-pointer">
+                <Plus size={18} className="mr-2" />
+                Add Server
+              </button>
+            </Link>
             <button className="bg-gray-700 hover:bg-gray-600 p-2 rounded cursor-pointer">
               <Bell size={20} />
             </button>
@@ -171,10 +174,12 @@ const Dashboard = () => {
               <Server size={48} className="mx-auto text-gray-500 mb-4" />
               <h3 className="text-xl font-medium text-gray-300 mb-2">No servers found</h3>
               <p className="text-gray-400 mb-6">Add your first server to start monitoring</p>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded inline-flex items-center cursor-pointer">
-                <Plus size={18} className="mr-2" />
-                Add Server
-              </button>
+              <Link href="/servers/new">
+                <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded inline-flex items-center cursor-pointer">
+                  <Plus size={18} className="mr-2" />
+                  Add Server
+                </button>
+              </Link>
             </div>
           )}
         </div>

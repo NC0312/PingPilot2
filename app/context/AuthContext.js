@@ -16,6 +16,7 @@ import {
 import { db } from '../firebase/config';
 import bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { useRouter } from 'next/navigation';
 
 const AuthContext = createContext({});
 export const useAuth = () => useContext(AuthContext);
@@ -28,6 +29,7 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const route = useRouter();
 
     useEffect(() => {
         const checkSession = async () => {
@@ -194,9 +196,9 @@ export const AuthProvider = ({ children }) => {
                 email,
                 password: hashedPassword,
                 displayName: name,
-                photoURL: null,
                 emailVerified: false,
                 createdAt: Date.now(),
+                role: 'user', // Default role is 'user'
             };
 
             await setDoc(doc(db, USERS_COLLECTION, uid), userData);
@@ -243,7 +245,7 @@ export const AuthProvider = ({ children }) => {
             const userDataToReturn = { ...userData };
             delete userDataToReturn.password;
             setUser(userDataToReturn);
-
+            route.push('/dashboard'); // Redirect to dashboard after login
             return userDataToReturn;
         } catch (err) {
             setError(err.message);
@@ -395,6 +397,37 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Role-based authorization helpers
+    const hasRole = (role) => {
+        return user && user.role === role;
+    };
+
+    const isAdmin = () => {
+        return hasRole('admin');
+    };
+
+    // Update user role - only admin can change roles
+    const updateUserRole = async (userId, newRole) => {
+        setError(null);
+        try {
+            if (!user || user.role !== 'admin') {
+                throw new Error('Unauthorized: Only admins can change roles');
+            }
+
+            if (!['user', 'admin'].includes(newRole)) {
+                throw new Error('Invalid role');
+            }
+
+            const userRef = doc(db, USERS_COLLECTION, userId);
+            await updateDoc(userRef, { role: newRole });
+
+            return true;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
     return (
         <AuthContext.Provider value={{
             user,
@@ -412,7 +445,10 @@ export const AuthProvider = ({ children }) => {
             verifyEmail,
             resendVerificationEmail,
             checkEmailVerification,
-            loginWithoutVerification
+            loginWithoutVerification,
+            hasRole,
+            isAdmin,
+            updateUserRole
         }}>
             {!loading ? children : <div>Loading...</div>}
         </AuthContext.Provider>
