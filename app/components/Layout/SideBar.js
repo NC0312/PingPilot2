@@ -161,7 +161,7 @@ const SideBar = () => {
 
                     {isCollapsed && (
                         <motion.img
-                            src='/logo.png'
+                            src='/favicon.png'
                             alt="Ping Pilot Logo"
                             className="h-8"
                             whileHover={{ rotate: 10, scale: 1.05 }}
