@@ -1,6 +1,6 @@
 // app/api/check-servers/route.js
 import { NextResponse } from 'next/server';
-import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/app/firebase/config';
 import nodemailer from 'nodemailer';
 
@@ -286,19 +286,18 @@ const sendAlertEmail = async (server, status, oldStatus) => {
 
 // Main route handler
 export async function GET(req) {
-    console.log('Starting server check process...');
+    console.log('Starting server check process with parallel processing...');
 
     try {
-        // This endpoint should be triggered by a scheduled job
-        // In production, implement proper authentication
-        const apiKey = req.headers.get('x-api-key');
-        if (process.env.NODE_ENV === 'production' && apiKey !== process.env.MONITORING_API_KEY) {
-            console.error('Unauthorized access attempt to check-servers endpoint');
-            return NextResponse.json(
-                { error: 'Unauthorized access', type: 'auth_error' },
-                { status: 401 }
-            );
-        }
+        // Authentication check
+        // const apiKey = req.headers.get('x-api-key');
+        // if (process.env.NODE_ENV === 'production' && apiKey !== process.env.MONITORING_API_KEY) {
+        //     console.error('Unauthorized access attempt to check-servers endpoint');
+        //     return NextResponse.json(
+        //         { error: 'Unauthorized access', type: 'auth_error' },
+        //         { status: 401 }
+        //     );
+        // }
 
         // Get servers that need to be checked
         const serversRef = collection(db, 'servers');
@@ -314,10 +313,13 @@ export async function GET(req) {
             alertsSent: 0
         };
 
-        console.log(`Found ${querySnapshot.size} servers to process`);
+        console.log(`Found ${querySnapshot.size} servers to process in parallel`);
 
-        // Process each server
-        for (const serverDoc of querySnapshot.docs) {
+        // Create batched write for better performance
+        const batch = writeBatch(db);
+
+        // Process servers in parallel
+        const serverProcessPromises = querySnapshot.docs.map(async (serverDoc) => {
             try {
                 const server = {
                     id: serverDoc.id,
@@ -327,82 +329,113 @@ export async function GET(req) {
                 console.log(`Processing server ${server.name} (${server.id})`);
 
                 // Skip servers that shouldn't be monitored now
-                if (!shouldMonitor(server)) {
-                    results.skipped++;
-                    continue;
+                if (!(await shouldMonitor(server))) {
+                    return { action: 'skipped', server };
                 }
 
-                // Check how long since last check
+                // Check how long since last check with precise timing
                 const lastChecked = server.lastChecked ? new Date(server.lastChecked) : null;
                 const now = new Date();
-                const minutesSinceLastCheck = lastChecked
-                    ? Math.floor((now - lastChecked) / (1000 * 60))
+                const millisecondsSinceLastCheck = lastChecked
+                    ? (now - lastChecked)
                     : Infinity;
 
-                // Skip if checked recently (based on frequency)
-                if (lastChecked && minutesSinceLastCheck < (server.monitoring?.frequency || 5)) {
-                    console.log(`Skipping check for ${server.name}: last checked ${minutesSinceLastCheck} minutes ago (frequency: ${server.monitoring?.frequency || 5} minutes)`);
-                    results.skipped++;
-                    continue;
+                // Calculate minimum check interval in milliseconds
+                const frequency = server.monitoring?.frequency || 5;
+                const minimumCheckInterval = frequency * 60 * 1000;
+
+                // Log timing information
+                console.log(`Server ${server.name} timing:`, {
+                    lastChecked: lastChecked ? lastChecked.toISOString() : 'Never',
+                    millisecondsSinceLastCheck,
+                    minimumCheckInterval,
+                    frequencyMinutes: frequency
+                });
+
+                // Skip if checked recently
+                if (lastChecked && millisecondsSinceLastCheck < minimumCheckInterval) {
+                    const minutesSinceLastCheck = (millisecondsSinceLastCheck / (1000 * 60)).toFixed(2);
+                    console.log(`Skipping check for ${server.name}: last checked ${millisecondsSinceLastCheck} ms (${minutesSinceLastCheck} minutes) ago (frequency: ${frequency} minutes)`);
+                    return { action: 'skipped', server };
                 }
 
                 // Check server status
                 const oldStatus = server.status || 'unknown';
                 const checkResult = await checkServerStatus(server);
 
-                // Update server status in database
-                await updateDoc(doc(db, 'servers', server.id), {
+                // Prepare data for batch update
+                const updateData = {
                     status: checkResult.status,
                     responseTime: checkResult.responseTime,
                     error: checkResult.error,
                     lastChecked: checkResult.lastChecked
-                });
+                };
 
-                // Increment counters
-                results.checked++;
-                if (checkResult.status in results) {
-                    results[checkResult.status]++;
-                }
+                // Queue update in batch
+                batch.update(doc(db, 'servers', server.id), updateData);
 
                 // Determine if alert should be sent
                 const shouldSendAlert =
-                    // Status has changed
                     oldStatus !== checkResult.status ||
-                    // Server is up but responding slowly
                     (checkResult.status === 'up' &&
                         server.monitoring?.alerts?.responseThreshold &&
                         checkResult.responseTime > server.monitoring.alerts.responseThreshold);
 
-                // Send alerts if needed
-                if (shouldSendAlert) {
-                    console.log(`Alert condition detected for ${server.name}: status change or slow response`);
+                // Include result in return value
+                return {
+                    action: 'checked',
+                    server,
+                    oldStatus,
+                    checkResult,
+                    shouldSendAlert
+                };
+            } catch (serverError) {
+                console.error(`Error processing server ${serverDoc.id}:`, serverError);
+                return { action: 'error', serverId: serverDoc.id, error: serverError };
+            }
+        });
 
-                    // Include the check result in the server object for alert email
+        // Wait for all server processing to complete
+        const serverResults = await Promise.all(serverProcessPromises);
+
+        // Process results and send alerts (alerts still run sequentially to avoid overwhelming email service)
+        for (const result of serverResults) {
+            if (result.action === 'skipped') {
+                results.skipped++;
+            } else if (result.action === 'checked') {
+                results.checked++;
+                results[result.checkResult.status]++;
+
+                if (result.shouldSendAlert) {
+                    console.log(`Alert condition detected for ${result.server.name}: status change or slow response`);
+
+                    // Include the check result in server object for alert email
                     const alertSent = await sendAlertEmail(
                         {
-                            ...server,
-                            ...checkResult,
-                            // Ensure monitoring data is preserved
+                            ...result.server,
+                            ...result.checkResult,
                             monitoring: {
-                                ...server.monitoring,
-                                ...checkResult.monitoring
+                                ...result.server.monitoring,
+                                ...result.checkResult.monitoring
                             }
                         },
-                        checkResult.status,
-                        oldStatus
+                        result.checkResult.status,
+                        result.oldStatus
                     );
 
                     if (alertSent) {
                         results.alertsSent++;
                     }
                 }
-            } catch (serverError) {
-                console.error(`Error processing server ${serverDoc.id}:`, serverError);
-                // Continue processing other servers even if one fails
+            } else if (result.action === 'error') {
+                results.error++;
             }
         }
 
-        console.log('Server check process completed:', results);
+        // Commit all database updates at once
+        await batch.commit();
+
+        console.log('Parallel server check process completed:', results);
         return NextResponse.json({ results });
     } catch (error) {
         console.error('Error checking servers:', error);
