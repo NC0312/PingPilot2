@@ -1,6 +1,6 @@
 // app/api/subscription/route.js
 import { NextResponse } from 'next/server';
-import { createSubscription, PLAN_TYPES } from '@/app/utils/subscriptionPlans';
+import { createSubscription, PLAN_TYPES } from '@/app/components/subscriptionPlans';
 import { db } from '@/app/firebase/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
