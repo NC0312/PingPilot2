@@ -67,6 +67,9 @@ const checkServerStatus = async (server) => {
     let responseTime = null;
     let error = null;
 
+    // Threshold for slow response (in milliseconds)
+    const responseThreshold = server.monitoring?.alerts?.responseThreshold || 1000;
+
     try {
         console.log(`Checking server ${server.name} (${server.url})`);
 
@@ -86,14 +89,18 @@ const checkServerStatus = async (server) => {
                     signal: AbortSignal.timeout(10000), // 10 second timeout
                 });
 
+                responseTime = Date.now() - startTime;
                 const tcpResult = await tcpResponse.json();
 
-                if (tcpResponse.ok && tcpResult.success) {
+                if (tcpResponse.status === 200 && tcpResult.success) {
                     status = 'up';
-                    responseTime = tcpResult.responseTime;
+                    // Check if response is slow
+                    if (responseTime > responseThreshold) {
+                        error = `Slow response: ${responseTime}ms exceeds threshold of ${responseThreshold}ms`;
+                    }
                 } else {
                     status = 'down';
-                    error = tcpResult.error || 'TCP check failed';
+                    error = tcpResult.error || `TCP check failed with status: ${tcpResponse.status}`;
                 }
             } catch (tcpErr) {
                 status = 'down';
@@ -112,10 +119,14 @@ const checkServerStatus = async (server) => {
 
             responseTime = Date.now() - startTime;
 
-            if (response.ok) {
+            if (response.status === 200) {
                 status = 'up';
+                // Check if response is slow
+                if (responseTime > responseThreshold) {
+                    error = `Slow response: ${responseTime}ms exceeds threshold of ${responseThreshold}ms`;
+                }
             } else {
-                status = 'error';
+                status = 'down';
                 error = `HTTP ${response.status}: ${response.statusText}`;
             }
         }
@@ -167,13 +178,14 @@ const sendAlertEmail = async (server, status, oldStatus) => {
 
     // Determine alert type and content
     let subject, htmlContent;
+    const responseThreshold = server.monitoring?.alerts?.responseThreshold || 1000;
 
-    if (oldStatus === 'up' && (status === 'down' || status === 'error')) {
+    if (oldStatus === 'up' && status === 'down') {
         // Server went down
         subject = `🚨 ALERT: ${server.name} is DOWN`;
         htmlContent = `
             <h1>Server Down Alert</h1>
-            <p>Your server <strong>${server.name}</strong> is currently <strong style="color: red;">${status.toUpperCase()}</strong>.</p>
+            <p>Your server <strong>${server.name}</strong> is currently <strong style="color: red;">DOWN</strong>.</p>
             <p>URL: ${server.url}</p>
             <p>Time of detection: ${new Date().toLocaleString()}</p>
             <p>Error: ${server.error || 'Unknown error'}</p>
@@ -191,7 +203,7 @@ const sendAlertEmail = async (server, status, oldStatus) => {
             <p>Current response time: ${server.responseTime}ms</p>
             <p>This is an automated message from Ping Pilot monitoring.</p>
         `;
-    } else if (status === 'up' && server.responseTime > server.monitoring.alerts.responseThreshold) {
+    } else if (status === 'up' && server.responseTime > responseThreshold) {
         // Slow response
         subject = `⚠️ WARNING: ${server.name} is responding slowly`;
         htmlContent = `
@@ -199,20 +211,7 @@ const sendAlertEmail = async (server, status, oldStatus) => {
             <p>Your server <strong>${server.name}</strong> is <strong style="color: orange;">responding slowly</strong>.</p>
             <p>URL: ${server.url}</p>
             <p>Time of detection: ${new Date().toLocaleString()}</p>
-            <p>Current response time: ${server.responseTime}ms (threshold: ${server.monitoring.alerts.responseThreshold}ms)</p>
-            <p>This is an automated message from Ping Pilot monitoring.</p>
-        `;
-    } else if ((oldStatus === 'down' && status === 'error') || (oldStatus === 'error' && status === 'down')) {
-        // Status change between problem states
-        subject = `🚨 UPDATE: ${server.name} Status Changed`;
-        htmlContent = `
-            <h1>Server Status Update</h1>
-            <p>Your server <strong>${server.name}</strong> status has changed from <strong>${oldStatus.toUpperCase()}</strong> to <strong>${status.toUpperCase()}</strong>.</p>
-            <p>URL: ${server.url}</p>
-            <p>Time of detection: ${new Date().toLocaleString()}</p>
-            <p>Response time: ${server.responseTime}ms</p>
-            <p>Error: ${server.error || 'Unknown error'}</p>
-            <p>We'll notify you when the server is back online.</p>
+            <p>Current response time: ${server.responseTime}ms (threshold: ${responseThreshold}ms)</p>
             <p>This is an automated message from Ping Pilot monitoring.</p>
         `;
     } else {

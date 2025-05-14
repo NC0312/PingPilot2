@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { BarChart4, Users, Server, AlertTriangle, Award } from 'lucide-react';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/app/firebase/config';
+import Link from 'next/link';
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState({
@@ -246,25 +247,28 @@ export default function AdminDashboard() {
                     </div>
                 </div>
 
-                <div className="bg-gray-700 rounded-lg p-4 flex-1">
-                    <h3 className="text-lg font-medium mb-4">Quick Actions</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                        <button className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg p-3 text-sm flex items-center justify-center">
-                            <Users size={16} className="mr-2" />
-                            Manage Users
-                        </button>
-                        <button className="bg-green-600 hover:bg-green-700 text-white rounded-lg p-3 text-sm flex items-center justify-center">
-                            <Server size={16} className="mr-2" />
-                            View Servers
-                        </button>
-                        <button className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg p-3 text-sm flex items-center justify-center">
-                            <Award size={16} className="mr-2" />
-                            Subscription Plans
-                        </button>
-                        <button className="bg-red-600 hover:bg-red-700 text-white rounded-lg p-3 text-sm flex items-center justify-center">
-                            <AlertTriangle size={16} className="mr-2" />
-                            View Alerts
-                        </button>
+                <div className="bg-gray-700 rounded-lg p-6 flex-1 shadow-lg border border-gray-700 hover:border-gray-600 transition-all">
+                    <h3 className="text-xl font-semibold mb-5 text-white flex items-center">
+                        <span className="bg-indigo-600 p-1.5 rounded-md mr-2 inline-flex">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </span>
+                        Quick Actions
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <Link href="/admin/users" className="group">
+                            <button className="w-full bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white rounded-lg p-4 text-sm flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg group-hover:translate-y-[-2px]">
+                                <Users size={18} className="mr-2 group-hover:animate-pulse" />
+                                Manage Users
+                            </button>
+                        </Link>
+                        <Link href="/admin/servers" className="group">
+                            <button className="w-full bg-gradient-to-br from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white rounded-lg p-4 text-sm flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg group-hover:translate-y-[-2px]">
+                                <Server size={18} className="mr-2 group-hover:animate-pulse" />
+                                View Servers
+                            </button>
+                        </Link>
                     </div>
                 </div>
             </div>

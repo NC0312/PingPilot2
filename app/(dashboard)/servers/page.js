@@ -126,8 +126,6 @@ export default function ServersPage() {
                 return 'text-green-500';
             case 'down':
                 return 'text-red-500';
-            case 'error':
-                return 'text-orange-500';
             default:
                 return 'text-gray-400';
         }
@@ -140,8 +138,6 @@ export default function ServersPage() {
                 return 'Online';
             case 'down':
                 return 'Down';
-            case 'error':
-                return 'Error';
             default:
                 return 'Unknown';
         }
@@ -154,8 +150,6 @@ export default function ServersPage() {
                 return <CheckCircle size={16} className="text-green-500" />;
             case 'down':
                 return <AlertTriangle size={16} className="text-red-500" />;
-            case 'error':
-                return <AlertTriangle size={16} className="text-orange-500" />;
             default:
                 return <Clock size={16} className="text-gray-400" />;
         }

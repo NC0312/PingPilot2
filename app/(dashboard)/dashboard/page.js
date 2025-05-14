@@ -284,8 +284,6 @@ export default function AdminServersPage() {
           return { color: 'bg-green-500', text: 'Up' };
         case 'down':
           return { color: 'bg-red-500', text: 'Down' };
-        case 'error':
-          return { color: 'bg-yellow-500', text: 'Error' };
         default:
           return { color: 'bg-gray-500', text: 'Unknown' };
       }
@@ -360,12 +358,6 @@ export default function AdminServersPage() {
               onClick={() => setStatusFilter('down')}
             >
               Down
-            </button>
-            <button
-              className={`px-4 py-2 rounded-lg ${statusFilter === 'error' ? 'bg-yellow-600' : 'bg-gray-700'}`}
-              onClick={() => setStatusFilter('error')}
-            >
-              Error
             </button>
           </div>
         </div>

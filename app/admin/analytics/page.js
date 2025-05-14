@@ -33,7 +33,7 @@ export default function AdminAnalytics() {
 
     // Different colors for the pie charts
     const COLORS = ['#0088FE', '#FF8042', '#FFBB28', '#00C49F', '#AF19FF'];
-    const SERVER_STATUS_COLORS = ['#10b981', '#ef4444', '#f59e0b']; // green, red, yellow
+    const SERVER_STATUS_COLORS = ['#10b981', '#ef4444']; // green, red
 
     const fetchAnalyticsData = async () => {
         setLoading(true);
@@ -139,7 +139,7 @@ export default function AdminAnalytics() {
 
             const previousServersSnapshot = await getDocs(previousServersQuery);
 
-            const statusCounts = { up: 0, down: 0, warning: 0 };
+            const statusCounts = { up: 0, down: 0 };
             let totalResponseTime = 0;
             let responseTimeCount = 0;
 
@@ -153,18 +153,15 @@ export default function AdminAnalytics() {
                         totalResponseTime += serverData.responseTime;
                         responseTimeCount++;
                     }
-                } else if (serverData.status === 'down') {
-                    statusCounts.down++;
                 } else {
-                    // Consider 'error' or any other status as warning
-                    statusCounts.warning++;
+                    // Any status that's not 'up' is considered 'down'
+                    statusCounts.down++;
                 }
             });
 
             const serverStatusData = [
                 { name: 'Up', value: statusCounts.up },
-                { name: 'Down', value: statusCounts.down },
-                { name: 'Warning', value: statusCounts.warning },
+                { name: 'Down', value: statusCounts.down }
             ];
 
             // For alerts by type, in a real implementation, you would have a dedicated collection
