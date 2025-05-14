@@ -1,163 +1,304 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { Globe, AlertTriangle, Check, Info } from 'lucide-react';
+import { collection, addDoc, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { db } from '@/app/firebase/config';
+import { useAuth } from '@/app/context/AuthContext';
+import { ServerForm } from '@/app/components/Servers/ServerForm';
+import { MonitoringForm } from '@/app/components/Servers/MonitoringForm';
+import { AlertTriangle, CheckCircle, ArrowLeft, Server, ArrowRight, Layers } from 'lucide-react';
+import Link from 'next/link';
 
 export default function NewServerPage() {
+    const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
+    const [serverData, setServerData] = useState(null);
+    const [monitoringData, setMonitoringData] = useState(null);
+    const [userPlan, setUserPlan] = useState('free');
+    const [serverCount, setServerCount] = useState(0);
+    const [maxServers, setMaxServers] = useState(1);
+    const [fetchingUserData, setFetchingUserData] = useState(true);
+
     const router = useRouter();
+    const { user } = useAuth();
 
-    const {
-        register,
-        handleSubmit,
-        formState: { errors }
-    } = useForm({
-        defaultValues: {
-            name: '',
-            url: ''
-        }
-    });
+    useEffect(() => {
+        const fetchUserData = async () => {
+            if (!user) return;
 
-    const onSubmit = async (data) => {
+            try {
+                // Get user data including subscription info
+                const userRef = doc(db, 'users', user.uid);
+                const userSnap = await getDoc(userRef);
+
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+
+                    // Get subscription plan
+                    let plan = 'free';
+                    let limit = 1;
+
+                    if (userData.subscription && userData.subscription.plan) {
+                        plan = userData.subscription.plan;
+                        // Set server limits based on plan
+                        switch (plan) {
+                            case 'yearly':
+                                limit = 25;
+                                break;
+                            case 'halfYearly':
+                                limit = 15;
+                                break;
+                            case 'monthly':
+                                limit = 10;
+                                break;
+                            default:
+                                limit = 1;
+                        }
+                    }
+
+                    // If admin, no server limit
+                    if (userData.role === 'admin') {
+                        limit = Infinity;
+                    }
+
+                    setUserPlan(plan);
+                    setMaxServers(limit);
+
+                    // Count current servers
+                    const serversRef = collection(db, 'servers');
+                    const q = query(serversRef, where('uploadedBy', '==', user.uid));
+                    const querySnapshot = await getDocs(q);
+                    setServerCount(querySnapshot.size);
+                }
+            } catch (err) {
+                console.error('Error fetching user data:', err);
+                setError('Failed to fetch user data. Please try again.');
+            } finally {
+                setFetchingUserData(false);
+            }
+        };
+
+        fetchUserData();
+    }, [user]);
+
+    const handleServerFormSubmit = (data) => {
+        setServerData(data);
+        setStep(2);
+    };
+
+    const handleMonitoringFormSubmit = async (data) => {
+        setMonitoringData(data);
+        await createServer(serverData, data);
+    };
+
+    const createServer = async (serverFormData, monitoringFormData) => {
         setLoading(true);
         setError(null);
-        setSuccess(false);
 
         try {
-            // This is a mock submission, in production this would call your API
-            // const response = await fetch('/api/servers', {
-            //   method: 'POST',
-            //   headers: { 'Content-Type': 'application/json' },
-            //   body: JSON.stringify(data)
-            // });
+            // Calculate trial end date (2 days from now) for free users
+            const trialEnd = user.role !== 'admin' && userPlan === 'free'
+                ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).getTime()
+                : null;
 
-            // if (!response.ok) throw new Error('Failed to add server');
+            // Prepare server document
+            const serverDoc = {
+                name: serverFormData.name,
+                url: serverFormData.url,
+                type: serverFormData.type || 'website',
+                description: serverFormData.description || '',
+                uploadedBy: user.uid,
+                uploadedAt: new Date().toISOString(),
+                uploadedRole: user.role || 'user',
+                status: 'unknown',
+                lastChecked: null,
+                responseTime: null,
+                error: null,
+                monitoring: {
+                    frequency: monitoringFormData.checkFrequency || 5,
+                    daysOfWeek: monitoringFormData.monitoringDays || [1, 2, 3, 4, 5],
+                    timeWindows: [
+                        {
+                            start: monitoringFormData.checkTimeRange?.start || '09:00',
+                            end: monitoringFormData.checkTimeRange?.end || '17:00'
+                        }
+                    ],
+                    alerts: {
+                        enabled: monitoringFormData.alertPreferences?.email || monitoringFormData.alertPreferences?.phone || false,
+                        email: monitoringFormData.alertPreferences?.email || false,
+                        phone: monitoringFormData.alertPreferences?.phone || false,
+                        responseThreshold: monitoringFormData.responseThreshold || 1000,
+                        timeWindow: {
+                            start: monitoringFormData.alertTimeRange?.start || '09:00',
+                            end: monitoringFormData.alertTimeRange?.end || '17:00'
+                        }
+                    },
+                    trialEndsAt: trialEnd
+                },
+                contactEmails: monitoringFormData.emails || [],
+                contactPhones: monitoringFormData.phones || [],
+            };
 
-            // Mock success after 1 second
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Add to Firestore
+            const serverRef = await addDoc(collection(db, 'servers'), serverDoc);
 
             setSuccess(true);
 
-            // Redirect to servers page after 2 seconds
+            // Redirect to server details after 2 seconds
             setTimeout(() => {
                 router.push('/servers');
             }, 2000);
         } catch (err) {
             console.error('Error adding server:', err);
             setError(err.message || 'Failed to add server');
+            setStep(1); // Go back to first step on error
         } finally {
             setLoading(false);
         }
     };
 
+    // Calculate step completion
+    const steps = [
+        { number: 1, title: 'Server Details', completed: !!serverData },
+        { number: 2, title: 'Monitoring Settings', completed: !!monitoringData }
+    ];
+
+    // If loading user data, show loading state
+    if (fetchingUserData) {
+        return (
+            <div className="flex justify-center items-center p-8 h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        );
+    }
+
     return (
-        <div className="text-white container mx-auto px-4 py-8 max-w-3xl">
-            <h1 className="text-2xl font-bold mb-8">Add New Server</h1>
-
-            <div className="bg-gray-800 rounded-lg p-6 shadow-lg">
-                {error && (
-                    <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-6 flex items-start">
-                        <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                        <p className="text-red-200 text-sm">{error}</p>
-                    </div>
-                )}
-
-                {success && (
-                    <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-3 mb-6 flex items-start">
-                        <Check className="text-green-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                        <p className="text-green-200 text-sm">
-                            Server added successfully! Redirecting to server list...
-                        </p>
-                    </div>
-                )}
-
-                <div className="bg-blue-900/30 border border-blue-600/50 rounded-lg p-3 mb-6 flex items-start">
-                    <Info className="text-blue-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                    <div className="text-blue-200 text-sm">
-                        <p className="font-medium mb-1">Free Trial Period</p>
-                        <p>Each server you add has a 2-day free trial period. After that, you'll need to upgrade to a paid plan to continue monitoring.</p>
-                    </div>
+        <div className="text-white container mx-auto px-4 py-8 max-w-4xl">
+            <div className="flex justify-between items-center mb-8">
+                <div className="flex items-center">
+                    <h1 className="text-2xl font-bold">Add New Server</h1>
                 </div>
+                <Link href="/servers" className="flex items-center text-blue-400 hover:text-blue-300">
+                    <ArrowLeft size={16} className="mr-1" />
+                    Back to Servers
+                </Link>
+            </div>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                    <div>
-                        <label htmlFor="name" className="block mb-1 text-sm font-medium text-gray-300">
-                            Server Name
-                        </label>
-                        <input
-                            id="name"
-                            type="text"
-                            className={`bg-gray-700 border ${errors.name ? 'border-red-500' : 'border-gray-600'} 
-                text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5`}
-                            placeholder="My Website"
-                            {...register('name', {
-                                required: 'Server name is required',
-                                minLength: {
-                                    value: 2,
-                                    message: 'Server name must be at least 2 characters'
-                                }
-                            })}
-                        />
-                        {errors.name && (
-                            <p className="mt-1 text-sm text-red-500">{errors.name.message}</p>
-                        )}
-                    </div>
-
-                    <div>
-                        <label htmlFor="url" className="block mb-1 text-sm font-medium text-gray-300">
-                            Server URL
-                        </label>
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                <Globe className="h-5 w-5 text-gray-400" />
+            {/* Step indicator */}
+            <div className="mb-8">
+                <div className="flex items-center justify-between">
+                    {steps.map((s, i) => (
+                        <React.Fragment key={s.number}>
+                            <div className="flex flex-col items-center">
+                                <div
+                                    className={`w-10 h-10 rounded-full flex items-center justify-center 
+                                        ${step === s.number
+                                            ? 'bg-blue-600 text-white'
+                                            : s.completed
+                                                ? 'bg-green-600 text-white'
+                                                : 'bg-gray-700 text-gray-300'}`}
+                                >
+                                    {s.completed && step !== s.number ? (
+                                        <CheckCircle size={18} />
+                                    ) : (
+                                        s.number
+                                    )}
+                                </div>
+                                <span className="mt-2 text-sm font-medium text-gray-300">{s.title}</span>
                             </div>
-                            <input
-                                id="url"
-                                type="text"
-                                className={`bg-gray-700 border ${errors.url ? 'border-red-500' : 'border-gray-600'} 
-                  text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                                placeholder="https://example.com"
-                                {...register('url', {
-                                    required: 'Server URL is required',
-                                    pattern: {
-                                        value: /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/,
-                                        message: 'Enter a valid URL'
-                                    }
-                                })}
+
+                            {i < steps.length - 1 && (
+                                <div className={`flex-1 h-1 mx-2 ${steps[i].completed ? 'bg-green-600' : 'bg-gray-700'}`}></div>
+                            )}
+                        </React.Fragment>
+                    ))}
+                </div>
+            </div>
+
+            {success ? (
+                <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-6 text-center">
+                    <CheckCircle className="mx-auto text-green-500 mb-4" size={48} />
+                    <h2 className="text-xl font-semibold text-white mb-2">Server Added Successfully!</h2>
+                    <p className="text-green-200 mb-4">
+                        Your server has been added and is now being monitored. Redirecting to server details...
+                    </p>
+                </div>
+            ) : (
+                <>
+                    {step === 1 && (
+                        <ServerForm
+                            onSubmit={handleServerFormSubmit}
+                            loading={loading}
+                            error={error}
+                            userPlan={userPlan}
+                            serverCount={serverCount}
+                            maxServers={maxServers}
+                        />
+                    )}
+
+                    {step === 2 && (
+                        <div>
+                            {/* Server Summary */}
+                            <div className="mb-6 bg-gray-700 rounded-lg p-4">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h3 className="text-lg font-medium text-white mb-1">{serverData.name}</h3>
+                                        <div className="flex items-center text-sm text-gray-300 mb-2">
+                                            <Server size={14} className="mr-1 text-gray-400" />
+                                            <span>{serverData.url}</span>
+                                        </div>
+                                        {serverData.description && (
+                                            <p className="text-sm text-gray-400">{serverData.description}</p>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={() => setStep(1)}
+                                        className="text-blue-400 hover:text-blue-300 text-sm"
+                                    >
+                                        Edit
+                                    </button>
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4 flex items-start">
+                                    <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
+                                    <p className="text-red-200 text-sm">{error}</p>
+                                </div>
+                            )}
+
+                            <MonitoringForm
+                                onSave={handleMonitoringFormSubmit}
+                                isLoading={loading}
                             />
                         </div>
-                        {errors.url && (
-                            <p className="mt-1 text-sm text-red-500">{errors.url.message}</p>
-                        )}
-                        <p className="mt-1 text-xs text-gray-400">Enter the full URL including http:// or https://</p>
-                    </div>
+                    )}
 
-                    <div className="pt-4 border-t border-gray-700">
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className={`w-full ${loading ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} 
-                focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors`}
-                        >
-                            {loading ? (
-                                <div className="flex justify-center items-center">
-                                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Adding Server...
-                                </div>
-                            ) : (
-                                'Add Server'
-                            )}
-                        </button>
-                    </div>
-                </form>
-            </div>
+                    {/* Navigation buttons (only needed in step 1 since step 2 has its own submit button) */}
+                    {step === 1 && (
+                        <div className="flex justify-between mt-6">
+                            <Link
+                                href="/servers"
+                                className="px-4 py-2 text-gray-300 hover:text-white"
+                            >
+                                Cancel
+                            </Link>
+
+                            <button
+                                type="button"
+                                onClick={() => document.querySelector('form').requestSubmit()}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm px-5 py-2.5 flex items-center"
+                            >
+                                Continue to Monitoring Settings
+                                <ArrowRight size={16} className="ml-2" />
+                            </button>
+                        </div>
+                    )}
+                </>
+            )}
         </div>
     );
 }

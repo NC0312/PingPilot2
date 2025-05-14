@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useAuth } from '@/app/context/AuthContext'
 
 const Navbar = () => {
+    const { user } = useAuth() // Assuming you have a custom hook for authentication
     const [isMobile, setIsMobile] = useState(false)
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -114,15 +116,27 @@ const Navbar = () => {
                                 </a>
                             </motion.div>
                         ))}
-                        <Link href="/auth">
-                            <motion.button
-                                whileHover={{ scale: 1.05, backgroundColor: "#2563eb" }}
-                                whileTap={{ scale: 0.95 }}
-                                className='px-4 py-2 font-mono bg-blue-600 text-white rounded-lg'
-                            >
-                                Sign In
-                            </motion.button>
-                        </Link>
+                        {user ? (
+                            <Link href="/dashboard">
+                                <motion.button
+                                    whileHover={{ scale: 1.05, backgroundColor: "#2563eb" }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className='px-4 py-2 font-mono bg-blue-600 text-white rounded-lg'
+                                >
+                                    Dashboard
+                                </motion.button>
+                            </Link>
+                        ) : (
+                            <Link href="/auth">
+                                <motion.button
+                                    whileHover={{ scale: 1.05, backgroundColor: "#2563eb" }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className='px-4 py-2 font-mono bg-blue-600 text-white rounded-lg'
+                                >
+                                    Sign In
+                                </motion.button>
+                            </Link>
+                        )}
                     </motion.div>
                 )}
             </nav>
