@@ -1,11 +1,15 @@
 // app/api/check-servers/route.js
 import { NextResponse } from 'next/server';
-import { collection, getDocs, query, where, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/app/firebase/config';
 import nodemailer from 'nodemailer';
 
 // Utility function to check if current time is within a time window
 const isWithinTimeWindow = (timeWindow) => {
+    if (!timeWindow || !timeWindow.start || !timeWindow.end) {
+        return true; // If no time window is specified, always monitor
+    }
+
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
@@ -16,30 +20,44 @@ const isWithinTimeWindow = (timeWindow) => {
 
 // Utility function to check if today is included in the monitoring days
 const isMonitoringDay = (daysOfWeek) => {
+    if (!daysOfWeek || daysOfWeek.length === 0) {
+        return true; // If no days are specified, monitor every day
+    }
+
     const today = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
     return daysOfWeek.includes(today);
 };
 
 // Utility function to check if server should be monitored based on schedule
 const shouldMonitor = (server) => {
+    if (!server.monitoring) {
+        return true; // If no monitoring settings, always monitor
+    }
+
     // Check if trial has ended for free users
     if (server.monitoring.trialEndsAt && server.monitoring.trialEndsAt < Date.now()) {
+        console.log(`Trial ended for server ${server.name}, skipping check`);
         return false;
     }
 
     // Check if today is a monitoring day
     if (!isMonitoringDay(server.monitoring.daysOfWeek)) {
+        console.log(`Today is not a monitoring day for server ${server.name}, skipping check`);
         return false;
     }
 
     // Check if current time is within any monitoring window
-    for (const timeWindow of server.monitoring.timeWindows) {
-        if (isWithinTimeWindow(timeWindow)) {
-            return true;
+    if (server.monitoring.timeWindows && server.monitoring.timeWindows.length > 0) {
+        for (const timeWindow of server.monitoring.timeWindows) {
+            if (isWithinTimeWindow(timeWindow)) {
+                return true;
+            }
         }
+        console.log(`Current time is outside monitoring windows for server ${server.name}, skipping check`);
+        return false;
     }
 
-    return false;
+    return true; // If no time windows, monitor all the time
 };
 
 // Function to check a server and return status
@@ -50,22 +68,37 @@ const checkServerStatus = async (server) => {
     let error = null;
 
     try {
+        console.log(`Checking server ${server.name} (${server.url})`);
+
         // Different check methods based on server type
         if (server.type === 'tcp') {
-            // For TCP servers, use a simple connection check
-            // This is simplified; in production, use a proper TCP client
-            const [host, portStr] = server.url.split(':');
-            const port = parseInt(portStr, 10) || 80;
+            // For TCP servers, use a proper endpoint to check
+            try {
+                const tcpResponse = await fetch('/api/tcp-check', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        host: server.url.split(':')[0],
+                        port: parseInt(server.url.split(':')[1], 10) || 80
+                    }),
+                    signal: AbortSignal.timeout(10000), // 10 second timeout
+                });
 
-            // Simulate TCP check (in production, use a real TCP connection)
-            const isUp = Math.random() > 0.1; // 90% success rate for demo
+                const tcpResult = await tcpResponse.json();
 
-            if (isUp) {
-                status = 'up';
-                responseTime = Math.floor(Math.random() * 100) + 20; // 20-120ms
-            } else {
+                if (tcpResponse.ok && tcpResult.success) {
+                    status = 'up';
+                    responseTime = tcpResult.responseTime;
+                } else {
+                    status = 'down';
+                    error = tcpResult.error || 'TCP check failed';
+                }
+            } catch (tcpErr) {
                 status = 'down';
-                error = 'Connection refused';
+                error = tcpErr.message || 'TCP check failed';
+                responseTime = Date.now() - startTime;
             }
         } else {
             // For HTTP/HTTPS resources, use fetch
@@ -92,6 +125,8 @@ const checkServerStatus = async (server) => {
         error = err.message || 'Unknown error';
     }
 
+    console.log(`Server ${server.name} status: ${status}, response time: ${responseTime}ms, error: ${error || 'none'}`);
+
     return {
         status,
         responseTime,
@@ -102,14 +137,22 @@ const checkServerStatus = async (server) => {
 
 // Send alert email for a server status change
 const sendAlertEmail = async (server, status, oldStatus) => {
-    if (!server.monitoring.alerts.email || !server.contactEmails || server.contactEmails.length === 0) {
+    // Skip if alerts are disabled or no emails configured
+    if (!server.monitoring?.alerts?.email ||
+        !server.contactEmails ||
+        server.contactEmails.length === 0) {
+        console.log(`Skipping email alert for ${server.name}: alerts disabled or no contact emails configured`);
         return;
     }
 
-    // Only send alerts during alert window
-    if (!isWithinTimeWindow(server.monitoring.alerts.timeWindow)) {
+    // Only send alerts during alert window if configured
+    if (server.monitoring?.alerts?.timeWindow &&
+        !isWithinTimeWindow(server.monitoring.alerts.timeWindow)) {
+        console.log(`Skipping email alert for ${server.name}: outside alert time window`);
         return;
     }
+
+    console.log(`Preparing email alert for ${server.name}: status changed from ${oldStatus} to ${status}`);
 
     // Configure email transport
     const transporter = nodemailer.createTransport({
@@ -130,7 +173,7 @@ const sendAlertEmail = async (server, status, oldStatus) => {
         subject = `🚨 ALERT: ${server.name} is DOWN`;
         htmlContent = `
             <h1>Server Down Alert</h1>
-            <p>Your server <strong>${server.name}</strong> is currently <strong style="color: red;">DOWN</strong>.</p>
+            <p>Your server <strong>${server.name}</strong> is currently <strong style="color: red;">${status.toUpperCase()}</strong>.</p>
             <p>URL: ${server.url}</p>
             <p>Time of detection: ${new Date().toLocaleString()}</p>
             <p>Error: ${server.error || 'Unknown error'}</p>
@@ -159,32 +202,72 @@ const sendAlertEmail = async (server, status, oldStatus) => {
             <p>Current response time: ${server.responseTime}ms (threshold: ${server.monitoring.alerts.responseThreshold}ms)</p>
             <p>This is an automated message from Ping Pilot monitoring.</p>
         `;
+    } else if ((oldStatus === 'down' && status === 'error') || (oldStatus === 'error' && status === 'down')) {
+        // Status change between problem states
+        subject = `🚨 UPDATE: ${server.name} Status Changed`;
+        htmlContent = `
+            <h1>Server Status Update</h1>
+            <p>Your server <strong>${server.name}</strong> status has changed from <strong>${oldStatus.toUpperCase()}</strong> to <strong>${status.toUpperCase()}</strong>.</p>
+            <p>URL: ${server.url}</p>
+            <p>Time of detection: ${new Date().toLocaleString()}</p>
+            <p>Response time: ${server.responseTime}ms</p>
+            <p>Error: ${server.error || 'Unknown error'}</p>
+            <p>We'll notify you when the server is back online.</p>
+            <p>This is an automated message from Ping Pilot monitoring.</p>
+        `;
     } else {
-        // No alert needed
+        // No alert needed for other transitions
+        console.log(`No alert needed for ${server.name} status transition from ${oldStatus} to ${status}`);
         return;
     }
 
     // Send email to all contacts
     try {
+        console.log(`Sending alert email for ${server.name} to ${server.contactEmails.join(', ')}`);
+
+        // Verify SMTP configuration
+        await transporter.verify();
+
         for (const email of server.contactEmails) {
-            await transporter.sendMail({
-                from: process.env.SMTP_FROM_EMAIL,
+            const info = await transporter.sendMail({
+                from: process.env.SMTP_FROM_EMAIL || 'noreply@pingpilot.com',
                 to: email,
                 subject,
                 html: htmlContent,
             });
+
+            console.log(`Email sent to ${email}: ${info.messageId}`);
         }
-        console.log(`Alert email sent for ${server.name}`);
+
+        console.log(`Alert email sent successfully for ${server.name}`);
+        return true;
     } catch (error) {
-        console.error('Error sending alert email:', error);
+        console.error(`Error sending alert email for ${server.name}:`, error);
+
+        // Log detailed error information
+        if (error.response) {
+            console.error('SMTP Response:', error.response);
+        }
+
+        return false;
     }
 };
 
 // Main route handler
 export async function GET(req) {
+    console.log('Starting server check process...');
+
     try {
         // This endpoint should be triggered by a scheduled job
-        // Check for API key or other authentication in production
+        // In production, implement proper authentication
+        const apiKey = req.headers.get('x-api-key');
+        if (process.env.NODE_ENV === 'production' && apiKey !== process.env.MONITORING_API_KEY) {
+            console.error('Unauthorized access attempt to check-servers endpoint');
+            return NextResponse.json(
+                { error: 'Unauthorized access', type: 'auth_error' },
+                { status: 401 }
+            );
+        }
 
         // Get servers that need to be checked
         const serversRef = collection(db, 'servers');
@@ -196,68 +279,169 @@ export async function GET(req) {
             up: 0,
             down: 0,
             error: 0,
-            skipped: 0
+            skipped: 0,
+            alertsSent: 0
         };
+
+        console.log(`Found ${querySnapshot.size} servers to process`);
 
         // Process each server
         for (const serverDoc of querySnapshot.docs) {
-            const server = {
-                id: serverDoc.id,
-                ...serverDoc.data()
-            };
+            try {
+                const server = {
+                    id: serverDoc.id,
+                    ...serverDoc.data()
+                };
 
-            // Skip servers that shouldn't be monitored now
-            if (!shouldMonitor(server)) {
-                results.skipped++;
-                continue;
-            }
+                console.log(`Processing server ${server.name} (${server.id})`);
 
-            // Check how long since last check
-            const lastChecked = server.lastChecked ? new Date(server.lastChecked) : null;
-            const now = new Date();
-            const minutesSinceLastCheck = lastChecked
-                ? Math.floor((now - lastChecked) / (1000 * 60))
-                : Infinity;
+                // Skip servers that shouldn't be monitored now
+                if (!shouldMonitor(server)) {
+                    results.skipped++;
+                    continue;
+                }
 
-            // Skip if checked recently (based on frequency)
-            if (lastChecked && minutesSinceLastCheck < server.monitoring.frequency) {
-                results.skipped++;
-                continue;
-            }
+                // Check how long since last check
+                const lastChecked = server.lastChecked ? new Date(server.lastChecked) : null;
+                const now = new Date();
+                const minutesSinceLastCheck = lastChecked
+                    ? Math.floor((now - lastChecked) / (1000 * 60))
+                    : Infinity;
 
-            // Check server status
-            const oldStatus = server.status;
-            const checkResult = await checkServerStatus(server);
+                // Skip if checked recently (based on frequency)
+                if (lastChecked && minutesSinceLastCheck < (server.monitoring?.frequency || 5)) {
+                    console.log(`Skipping check for ${server.name}: last checked ${minutesSinceLastCheck} minutes ago (frequency: ${server.monitoring?.frequency || 5} minutes)`);
+                    results.skipped++;
+                    continue;
+                }
 
-            // Update server status in database
-            await updateDoc(doc(db, 'servers', server.id), {
-                status: checkResult.status,
-                responseTime: checkResult.responseTime,
-                error: checkResult.error,
-                lastChecked: checkResult.lastChecked
-            });
+                // Check server status
+                const oldStatus = server.status || 'unknown';
+                const checkResult = await checkServerStatus(server);
 
-            // Increment counters
-            results.checked++;
-            results[checkResult.status]++;
+                // Update server status in database
+                await updateDoc(doc(db, 'servers', server.id), {
+                    status: checkResult.status,
+                    responseTime: checkResult.responseTime,
+                    error: checkResult.error,
+                    lastChecked: checkResult.lastChecked
+                });
 
-            // Send alerts if status changed or response time exceeds threshold
-            if (oldStatus !== checkResult.status ||
-                (checkResult.status === 'up' &&
-                    checkResult.responseTime > server.monitoring.alerts.responseThreshold)) {
-                await sendAlertEmail(
-                    { ...server, ...checkResult },
-                    checkResult.status,
-                    oldStatus
-                );
+                // Increment counters
+                results.checked++;
+                if (checkResult.status in results) {
+                    results[checkResult.status]++;
+                }
+
+                // Determine if alert should be sent
+                const shouldSendAlert =
+                    // Status has changed
+                    oldStatus !== checkResult.status ||
+                    // Server is up but responding slowly
+                    (checkResult.status === 'up' &&
+                        server.monitoring?.alerts?.responseThreshold &&
+                        checkResult.responseTime > server.monitoring.alerts.responseThreshold);
+
+                // Send alerts if needed
+                if (shouldSendAlert) {
+                    console.log(`Alert condition detected for ${server.name}: status change or slow response`);
+
+                    // Include the check result in the server object for alert email
+                    const alertSent = await sendAlertEmail(
+                        {
+                            ...server,
+                            ...checkResult,
+                            // Ensure monitoring data is preserved
+                            monitoring: {
+                                ...server.monitoring,
+                                ...checkResult.monitoring
+                            }
+                        },
+                        checkResult.status,
+                        oldStatus
+                    );
+
+                    if (alertSent) {
+                        results.alertsSent++;
+                    }
+                }
+            } catch (serverError) {
+                console.error(`Error processing server ${serverDoc.id}:`, serverError);
+                // Continue processing other servers even if one fails
             }
         }
 
+        console.log('Server check process completed:', results);
         return NextResponse.json({ results });
     } catch (error) {
         console.error('Error checking servers:', error);
         return NextResponse.json(
             { error: 'Failed to check servers', type: 'server_error', details: error.message },
+            { status: 500 }
+        );
+    }
+}
+
+// Also support direct POST requests for manual checks
+export async function POST(req) {
+    try {
+        const { serverId } = await req.json();
+
+        if (!serverId) {
+            return NextResponse.json(
+                { error: 'Server ID is required', type: 'missing_id' },
+                { status: 400 }
+            );
+        }
+
+        // Get server data
+        const serverDoc = await getDoc(doc(db, 'servers', serverId));
+
+        if (!serverDoc.exists()) {
+            return NextResponse.json(
+                { error: 'Server not found', type: 'not_found' },
+                { status: 404 }
+            );
+        }
+
+        const server = {
+            id: serverDoc.id,
+            ...serverDoc.data()
+        };
+
+        // Check server status
+        const oldStatus = server.status || 'unknown';
+        const checkResult = await checkServerStatus(server);
+
+        // Update server status in database
+        await updateDoc(doc(db, 'servers', server.id), {
+            status: checkResult.status,
+            responseTime: checkResult.responseTime,
+            error: checkResult.error,
+            lastChecked: checkResult.lastChecked
+        });
+
+        // Send alert if status changed
+        if (oldStatus !== checkResult.status ||
+            (checkResult.status === 'up' &&
+                server.monitoring?.alerts?.responseThreshold &&
+                checkResult.responseTime > server.monitoring.alerts.responseThreshold)) {
+
+            await sendAlertEmail(
+                { ...server, ...checkResult },
+                checkResult.status,
+                oldStatus
+            );
+        }
+
+        return NextResponse.json({
+            message: 'Server checked successfully',
+            result: checkResult
+        });
+    } catch (error) {
+        console.error('Error checking server:', error);
+        return NextResponse.json(
+            { error: 'Failed to check server', type: 'server_error', details: error.message },
             { status: 500 }
         );
     }
