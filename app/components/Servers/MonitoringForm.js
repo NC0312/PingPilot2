@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Mail, Phone, AlertTriangle, CheckCircle, X, Plus, Info } from 'lucide-react';
 import { useAuth } from '@/app/context/AuthContext';
+import { getPlanLimits } from '../subscriptionPlans';
 
 export const WeekdaySelector = ({ selectedDays, onChange }) => {
     const days = [
@@ -415,22 +416,34 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading }) => {
 
     const [formData, setFormData] = useState(mergedData);
 
+    const getPremiumText = (currentPlan) => {
+        switch (currentPlan) {
+            case 'monthly':
+                return "Half-yearly plan allows 1-minute checks";
+            case 'halfYearly':
+                return "Yearly plan allows 30-second checks";
+            case 'yearly':
+                return null;
+            default: // free
+                return "Paid plans allow more frequent and extended monitoring";
+        }
+    };
+
     // Get min and max check frequency based on user's plan
     const getFrequencyLimits = () => {
+        // If user is admin, provide full access
         if (isAdmin) {
             return { min: 1, max: 60, premiumText: null };
         }
 
-        switch (user?.subscription?.plan) {
-            case 'yearly':
-                return { min: 1, max: 60, premiumText: null };
-            case 'halfYearly':
-                return { min: 1, max: 30, premiumText: "Yearly plan allows up to 30-second checks" };
-            case 'monthly':
-                return { min: 5, max: 60, premiumText: "Half-yearly plan allows 1-minute checks" };
-            default: // free
-                return { min: 5, max: 30, premiumText: "Paid plans allow more frequent and extended monitoring" };
-        }
+        // Otherwise, get limits from subscription plan
+        const planLimits = getPlanLimits(user);
+
+        return {
+            min: planLimits.minCheckFrequency,
+            max: planLimits.maxCheckFrequency,
+            premiumText: getPremiumText(user.subscription?.plan)
+        };
     };
 
     const { min, max, premiumText } = getFrequencyLimits();

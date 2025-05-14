@@ -199,6 +199,7 @@ export const AuthProvider = ({ children }) => {
                 emailVerified: false,
                 createdAt: Date.now(),
                 role: 'user', // Default role is 'user'
+                subscription: 'free' // Default subscription
             };
 
             await setDoc(doc(db, USERS_COLLECTION, uid), userData);

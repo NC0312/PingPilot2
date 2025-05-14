@@ -29,15 +29,47 @@ const isMonitoringDay = (daysOfWeek) => {
 };
 
 // Utility function to check if server should be monitored based on schedule
-const shouldMonitor = (server) => {
+const shouldMonitor = async (server) => {
     if (!server.monitoring) {
         return true; // If no monitoring settings, always monitor
     }
 
+    // If the server was uploaded by an admin or with an admin plan, always monitor
+    if (server.uploadedRole === 'admin' || server.uploadedPlan === 'admin') {
+        return true;
+    }
+
     // Check if trial has ended for free users
     if (server.monitoring.trialEndsAt && server.monitoring.trialEndsAt < Date.now()) {
-        console.log(`Trial ended for server ${server.name}, skipping check`);
-        return false;
+        console.log(`Trial ended for server ${server.name}, checking subscription status`);
+
+        // Check if user has an active subscription
+        try {
+            const userRef = doc(db, 'users', server.uploadedBy);
+            const userSnap = await getDoc(userRef);
+
+            if (!userSnap.exists()) {
+                console.log(`User not found for server ${server.name}, skipping check`);
+                return false;
+            }
+
+            const userData = userSnap.data();
+            const subscription = userData.subscription;
+
+            // If user has no subscription or it's expired or still on free plan, skip monitoring
+            if (!subscription ||
+                subscription.plan === 'free' ||
+                (subscription.endDate && subscription.endDate < Date.now())) {
+                console.log(`No active paid subscription for server ${server.name}, skipping check`);
+                return false;
+            }
+
+            // User has an active paid subscription, proceed with monitoring
+            console.log(`Active subscription found for server ${server.name}, proceeding with check`);
+        } catch (err) {
+            console.error(`Error checking subscription for server ${server.name}:`, err);
+            return false;
+        }
     }
 
     // Check if today is a monitoring day

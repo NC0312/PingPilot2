@@ -9,6 +9,8 @@ import { ServerForm } from '@/app/components/Servers/ServerForm';
 import { MonitoringForm } from '@/app/components/Servers/MonitoringForm';
 import { AlertTriangle, CheckCircle, ArrowLeft, Server, ArrowRight, Layers } from 'lucide-react';
 import Link from 'next/link';
+import { getPlanLimits } from '@/app/components/subscriptionPlans';
+
 
 export default function NewServerPage() {
     const [step, setStep] = useState(1);
@@ -30,6 +32,7 @@ export default function NewServerPage() {
             if (!user) return;
 
             try {
+                setFetchingUserData(true);
                 // Get user data including subscription info
                 const userRef = doc(db, 'users', user.uid);
                 const userSnap = await getDoc(userRef);
@@ -37,35 +40,19 @@ export default function NewServerPage() {
                 if (userSnap.exists()) {
                     const userData = userSnap.data();
 
-                    // Get subscription plan
-                    let plan = 'free';
-                    let limit = 1;
+                    // Set plan type from subscription 
+                    const planType = userData.subscription?.plan || 'free';
+                    setUserPlan(planType);
 
-                    if (userData.subscription && userData.subscription.plan) {
-                        plan = userData.subscription.plan;
-                        // Set server limits based on plan
-                        switch (plan) {
-                            case 'yearly':
-                                limit = 25;
-                                break;
-                            case 'halfYearly':
-                                limit = 15;
-                                break;
-                            case 'monthly':
-                                limit = 10;
-                                break;
-                            default:
-                                limit = 1;
-                        }
-                    }
-
-                    // If admin, no server limit
+                    // Get limits based on user role and plan
+                    // If user is admin, they get unlimited servers regardless of plan
                     if (userData.role === 'admin') {
-                        limit = Infinity;
+                        setMaxServers(Infinity);
+                    } else {
+                        // Get max servers from plan limits
+                        const planLimits = getPlanLimits(userData);
+                        setMaxServers(planLimits.maxServers);
                     }
-
-                    setUserPlan(plan);
-                    setMaxServers(limit);
 
                     // Count current servers
                     const serversRef = collection(db, 'servers');
@@ -99,8 +86,13 @@ export default function NewServerPage() {
         setError(null);
 
         try {
+            // First, check if user has reached their server limit
+            if (serverCount >= maxServers && user.role !== 'admin') {
+                throw new Error(`You've reached your plan's limit of ${maxServers} servers. Please upgrade to add more servers.`);
+            }
+
             // Calculate trial end date (2 days from now) for free users
-            const trialEnd = user.role !== 'admin' && userPlan === 'free'
+            const trialEnd = userPlan === 'free'
                 ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).getTime()
                 : null;
 
@@ -113,6 +105,7 @@ export default function NewServerPage() {
                 uploadedBy: user.uid,
                 uploadedAt: new Date().toISOString(),
                 uploadedRole: user.role || 'user',
+                uploadedPlan: userPlan, // Store the plan used when adding the server
                 status: 'unknown',
                 lastChecked: null,
                 responseTime: null,
