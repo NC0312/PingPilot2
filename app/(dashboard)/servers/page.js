@@ -67,6 +67,8 @@ export default function ServersPage() {
                     const updatedServer = serversList.find(s => s.id === selectedServer.id);
                     if (updatedServer) {
                         setSelectedServer(updatedServer);
+                        // Fetch history for the selected server
+                        fetchServerHistory(selectedServer.id);
                     }
                 }
 
@@ -85,6 +87,42 @@ export default function ServersPage() {
         }
     }, [user]);
 
+    // Fetch server history data from cronJob collection
+    const fetchServerHistory = async (serverId) => {
+        try {
+            // Calculate 24 hours ago from current time
+            const now = new Date();
+            const startOf24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+            const cronJobRef = collection(db, 'cronJobs');
+            const q = query(
+                cronJobRef,
+                where('serverId', '==', serverId),
+                where('timestamp', '>=', Timestamp.fromDate(startOf24Hours)),
+                orderBy('timestamp', 'desc')
+            );
+
+            const querySnapshot = await getDocs(q);
+
+            // Transform data for chart and processing
+            const historicalData = querySnapshot.docs
+                .map(doc => {
+                    const data = doc.data();
+                    const date = data.timestamp.toDate();
+                    return {
+                        time: date, // Store as Date object for easier filtering
+                        avgTime: data.responseTime || 0,
+                        status: data.status || 'unknown'
+                    };
+                })
+                .sort((a, b) => a.time - b.time); // Sort chronologically
+
+            setResponseTimeData(historicalData);
+        } catch (err) {
+            console.error('Error fetching server history:', err);
+            setError('Failed to load server history');
+        }
+    };
 
     // Handle refresh action - manually check server status
     const handleRefresh = async () => {
@@ -145,65 +183,56 @@ export default function ServersPage() {
     };
 
     // Calculate uptime percentage from historical data
-    const calculateUptime = (period = 24) => {
-        if (!responseTimeData || responseTimeData.length === 0) {
-            return '100';
-        }
+    const calculateUptime = (periodHours) => {
+        if (!responseTimeData || responseTimeData.length === 0) return '100.0';
 
-        // Filter data points for the specified period
-        const relevantData = responseTimeData.slice(-period);
+        const now = new Date();
+        const startTime = new Date(now.getTime() - periodHours * 60 * 60 * 1000);
 
-        // Count how many data points have an 'up' status
+        // Filter data within the period
+        const relevantData = responseTimeData.filter(point => point.time >= startTime);
+        if (relevantData.length === 0) return '100.0';
+
         const upCount = relevantData.filter(point => point.status === 'up').length;
-
-        // Calculate percentage
-        const percentage = (upCount / relevantData.length) * 100;
-
-        return percentage.toFixed(1);
+        return ((upCount / relevantData.length) * 100).toFixed(1);
     };
 
     // Calculate incidents count
-    const countIncidents = (period = 24) => {
-        if (!responseTimeData || responseTimeData.length === 0) {
-            return 0;
-        }
+    const countIncidents = (periodHours) => {
+        if (!responseTimeData || responseTimeData.length === 0) return 0;
 
-        // Filter data points for the specified period
-        const relevantData = responseTimeData.slice(-period);
+        const now = new Date();
+        const startTime = new Date(now.getTime() - periodHours * 60 * 60 * 1000);
+        const relevantData = responseTimeData.filter(point => point.time >= startTime);
 
-        // Count status transitions from 'up' to 'down'
         let incidents = 0;
-        for (let i = 1; i < relevantData.length; i++) {
-            if (relevantData[i - 1].status === 'up' && relevantData[i].status === 'down') {
+        let previousStatus = relevantData[0]?.status || 'up';
+
+        for (let i = 0; i < relevantData.length; i++) {
+            if (i === 0 && relevantData[i].status === 'down') {
+                incidents++;
+            } else if (previousStatus === 'up' && relevantData[i].status === 'down') {
                 incidents++;
             }
-        }
-
-        // Check if the first data point is 'down' as well
-        if (relevantData[0].status === 'down') {
-            incidents++;
+            previousStatus = relevantData[i].status;
         }
 
         return incidents;
     };
 
     // Calculate downtime in minutes
-    const calculateDowntime = (period = 24) => {
-        if (!responseTimeData || responseTimeData.length === 0) {
-            return 0;
-        }
+    const calculateDowntime = (periodHours) => {
+        if (!responseTimeData || !selectedServer) return 0;
 
-        // Filter data points for the specified period
-        const relevantData = responseTimeData.slice(-period);
+        // Get check interval from server settings (default 5 minutes)
+        const checkInterval = selectedServer.monitoring?.frequency || 5;
+        const now = new Date();
+        const startTime = new Date(now.getTime() - periodHours * 60 * 60 * 1000);
 
-        // Estimate downtime (this is approximate since we don't have continuous data)
-        const downtimePoints = relevantData.filter(point => point.status === 'down').length;
+        const relevantData = responseTimeData.filter(point => point.time >= startTime);
+        const downCount = relevantData.filter(point => point.status === 'down').length;
 
-        // Assuming each data point represents approximately one hour in a 24-hour period
-        const downtimeHours = downtimePoints * (24 / relevantData.length);
-
-        // Convert to minutes
-        return Math.round(downtimeHours * 60);
+        return downCount * checkInterval;
     };
 
     // Get status indicator color
@@ -250,7 +279,7 @@ export default function ServersPage() {
 
             return (
                 <div className="bg-gray-800 p-2 border border-gray-700 rounded shadow-md">
-                    <p className="text-gray-300 text-sm">{`${label}`}</p>
+                    <p className="text-gray-300 text-sm">{`Time: ${label}`}</p>
                     <p className="text-blue-400 text-sm">{`Response Time: ${payload[0].value} ms`}</p>
                     <p className={`text-sm ${status === 'up' ? 'text-green-400' : 'text-red-400'}`}>
                         Status: {status === 'up' ? 'Online' : 'Down'}
@@ -477,14 +506,13 @@ export default function ServersPage() {
                                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                                     <XAxis dataKey="time" stroke="#94a3b8" />
                                     <YAxis stroke="#94a3b8" />
-                                    <Tooltip content={<CustomTooltip />} />
+                                    <Tooltip content={CustomTooltip} />
                                     <Line
                                         type="monotone"
                                         dataKey="avgTime"
                                         stroke="#3b82f6"
                                         strokeWidth={2}
                                         activeDot={{ r: 5, fill: "#3b82f6" }}
-                                        // Customize the dot color based on server status
                                         dot={(props) => {
                                             const { cx, cy, payload } = props;
                                             const fill = payload.status === 'up' ? '#3b82f6' : '#ef4444';
