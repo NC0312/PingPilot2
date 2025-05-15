@@ -157,7 +157,7 @@ const LandingPage = () => {
               whileTap={{ scale: 0.95 }}
               className='px-6 py-3 font-mono text-white bg-blue-600 rounded-xl transition-colors'
             >
-              Start Free Trial
+              Start Free Trial Today
             </motion.button>
           </motion.div>
         </motion.div>
