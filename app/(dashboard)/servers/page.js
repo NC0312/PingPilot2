@@ -27,7 +27,6 @@ export default function ServersPage() {
     const [selectedServer, setSelectedServer] = useState(null);
     const [responseTimeData, setResponseTimeData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
-    const [historicalData, setHistoricalData] = useState({});
     const { user } = useAuth();
 
     // Fetch servers from Firestore
@@ -86,106 +85,6 @@ export default function ServersPage() {
         }
     }, [user]);
 
-    // Fetch historical data for a server
-    const fetchServerHistory = async (serverId) => {
-        if (!serverId || !user) return;
-
-        try {
-            // Check if we already have historical data for this server
-            if (historicalData[serverId]) {
-                setResponseTimeData(formatHistoricalData(historicalData[serverId]));
-                return;
-            }
-
-            // Collection structure example: 'serverHistory/{serverId}/statusHistory'
-            const historyRef = collection(db, 'serverHistory', serverId, 'statusHistory');
-            const q = query(
-                historyRef,
-                orderBy('timestamp', 'desc'),
-                limit(24) // Get last 24 data points
-            );
-
-            const querySnapshot = await getDocs(q);
-            const historyData = [];
-
-            querySnapshot.forEach((doc) => {
-                historyData.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
-            });
-
-            // Cache the historical data
-            setHistoricalData(prev => ({
-                ...prev,
-                [serverId]: historyData
-            }));
-
-            // Format data for the chart
-            setResponseTimeData(formatHistoricalData(historyData));
-        } catch (err) {
-            console.error('Error fetching server history:', err);
-            // If we can't get actual history, generate placeholder data
-            // based on the server's current status
-            if (selectedServer) {
-                generatePlaceholderData(selectedServer);
-            }
-        }
-    };
-
-    // Format historical data for the chart
-    const formatHistoricalData = (historyData) => {
-        // Sort by timestamp ascending for chart display
-        const sortedData = [...historyData].sort((a, b) => {
-            const timeA = a.timestamp instanceof Timestamp ?
-                a.timestamp.toMillis() : new Date(a.timestamp).getTime();
-            const timeB = b.timestamp instanceof Timestamp ?
-                b.timestamp.toMillis() : new Date(b.timestamp).getTime();
-            return timeA - timeB;
-        });
-
-        return sortedData.map(entry => {
-            const timestamp = entry.timestamp instanceof Timestamp ?
-                entry.timestamp.toDate() : new Date(entry.timestamp);
-
-            return {
-                time: timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                avgTime: entry.responseTime || 0,
-                status: entry.status
-            };
-        });
-    };
-
-    // Generate placeholder data when no historical data is available
-    const generatePlaceholderData = (server) => {
-        const mockData = [];
-        const now = new Date();
-        const baseResponseTime = server.responseTime || 40;
-
-        // Generate data points for the last 24 hours
-        for (let i = 24; i >= 0; i--) {
-            const time = new Date(now);
-            time.setHours(now.getHours() - i);
-
-            // Create a base response time with some randomness
-            // but rooted in the server's actual response time
-            let responseTime = baseResponseTime - 10 + Math.random() * 20;
-
-            // Add some spikes for visual interest
-            if (i === 7) responseTime = baseResponseTime * 2.1;
-            if (i === 9) responseTime = baseResponseTime * 1.9;
-            if (i === 12) responseTime = baseResponseTime * 1.5;
-            if (i === 19) responseTime = baseResponseTime * 1.7;
-
-            mockData.push({
-                time: time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                avgTime: Math.round(responseTime),
-                status: Math.random() > 0.9 ? 'down' : 'up' // Simulate occasional downtime
-            });
-        }
-
-        setResponseTimeData(mockData);
-    };
 
     // Handle refresh action - manually check server status
     const handleRefresh = async () => {

@@ -1,8 +1,12 @@
 // app/api/check-servers/route.js
 import { NextResponse } from 'next/server';
-import { collection, getDocs, query, where, doc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc, getDoc, writeBatch, addDoc, serverTimestamp, Timestamp, orderBy } from 'firebase/firestore';
 import { db } from '@/app/firebase/config';
 import nodemailer from 'nodemailer';
+
+// Collections
+const SERVERS_COLLECTION = 'servers';
+const CRONJOB_COLLECTION = 'cronJobs';
 
 // Utility function to check if current time is within a time window
 const isWithinTimeWindow = (timeWindow) => {
@@ -170,12 +174,221 @@ const checkServerStatus = async (server) => {
 
     console.log(`Server ${server.name} status: ${status}, response time: ${responseTime}ms, error: ${error || 'none'}`);
 
-    return {
+    const now = new Date();
+    const result = {
         status,
         responseTime,
         error,
-        lastChecked: new Date().toISOString()
+        lastChecked: now.toISOString(),
+        timestamp: Timestamp.fromDate(now)
     };
+
+    // Store the check result in history
+    await storeServerCheckHistory(server.id, result);
+
+    return result;
+};
+
+// Store server check history in Firestore
+const storeServerCheckHistory = async (serverId, checkResult) => {
+    try {
+        const now = new Date();
+        // Add to the cronJob collection for dashboard charts
+        const cronJobRef = collection(db, CRONJOB_COLLECTION);
+        await addDoc(cronJobRef, {
+            serverId,
+            status: checkResult.status,
+            responseTime: checkResult.responseTime,
+            error: checkResult.error,
+            timestamp: checkResult.timestamp || Timestamp.now(),
+            date: now.toISOString().split('T')[0], // YYYY-MM-DD
+            hour: now.getHours(),
+            minute: now.getMinutes(),
+            timeSlot: Math.floor(now.getMinutes() / 15), // 15-minute slots (0-3)
+            hourMinute: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`,
+            created: serverTimestamp()
+        });
+
+        console.log(`Stored check history for server ${serverId}`);
+
+        // Check for data retention at midnight
+        if (now.getHours() === 0 && now.getMinutes() < 5) {
+            console.log("Midnight detected, running data retention policy");
+            await runDataRetentionPolicy();
+        }
+    } catch (err) {
+        console.error(`Error storing server check history for ${serverId}:`, err);
+    }
+};
+
+const getAggregatedData = async (serverId, hours = 24) => {
+    try {
+        const endDate = new Date();
+        const startDate = new Date(endDate.getTime() - (hours * 60 * 60 * 1000));
+
+        // Query the last 24 hours of data
+        const cronJobRef = collection(db, CRONJOB_COLLECTION);
+        const q = query(
+            cronJobRef,
+            where('serverId', '==', serverId),
+            where('timestamp', '>=', Timestamp.fromDate(startDate)),
+            where('timestamp', '<=', Timestamp.fromDate(endDate)),
+            orderBy('timestamp', 'asc')
+        );
+
+        const snapshot = await getDocs(q);
+        const hourlyData = new Map();
+
+        // Initialize hourly slots
+        for (let i = 0; i < hours; i++) {
+            const slotTime = new Date(endDate.getTime() - (i * 60 * 60 * 1000));
+            const hourKey = slotTime.getHours().toString().padStart(2, '0');
+            hourlyData.set(hourKey, {
+                hour: hourKey,
+                avgResponseTime: 0,
+                upCount: 0,
+                downCount: 0,
+                totalChecks: 0,
+                totalResponseTime: 0
+            });
+        }
+
+        // Aggregate data by hour
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const hour = data.hour.toString().padStart(2, '0');
+
+            if (hourlyData.has(hour)) {
+                const hourData = hourlyData.get(hour);
+                hourData.totalChecks++;
+
+                if (data.status === 'up') {
+                    hourData.upCount++;
+                    if (data.responseTime) {
+                        hourData.totalResponseTime += data.responseTime;
+                    }
+                } else {
+                    hourData.downCount++;
+                }
+
+                // Calculate average response time
+                if (hourData.upCount > 0) {
+                    hourData.avgResponseTime = Math.round(hourData.totalResponseTime / hourData.upCount);
+                }
+            }
+        });
+
+        // Convert Map to Array and sort by hour
+        return Array.from(hourlyData.values())
+            .sort((a, b) => a.hour.localeCompare(b.hour))
+            .map(data => ({
+                time: `${data.hour}:00`,
+                avgTime: data.avgResponseTime,
+                uptime: data.totalChecks > 0 ? (data.upCount / data.totalChecks) * 100 : 0,
+                status: data.upCount >= data.downCount ? 'up' : 'down'
+            }));
+
+    } catch (error) {
+        console.error('Error getting aggregated data:', error);
+        return [];
+    }
+};
+
+// Data retention policy - dump old data
+const runDataRetentionPolicy = async () => {
+    try {
+        console.log("Running data retention policy");
+
+        // Get yesterday's date in YYYY-MM-DD format
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        // For each server, archive yesterday's data
+        const serversRef = collection(db, SERVERS_COLLECTION);
+        const serversSnapshot = await getDocs(serversRef);
+
+        for (const serverDoc of serversSnapshot.docs) {
+            const serverId = serverDoc.id;
+
+            // Query all cronJob entries for this server from yesterday
+            const cronJobsRef = collection(db, CRONJOB_COLLECTION);
+            const q = query(
+                cronJobsRef,
+                where('serverId', '==', serverId),
+                where('date', '==', yesterdayStr)
+            );
+
+            const cronJobsSnapshot = await getDocs(q);
+
+            // If there's data to archive
+            if (!cronJobsSnapshot.empty) {
+                // Calculate daily statistics
+                let totalResponseTime = 0;
+                let totalChecks = 0;
+                let upChecks = 0;
+                let maxResponseTime = 0;
+                let minResponseTime = Number.MAX_SAFE_INTEGER;
+
+                cronJobsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.responseTime) {
+                        totalResponseTime += data.responseTime;
+                        maxResponseTime = Math.max(maxResponseTime, data.responseTime);
+                        minResponseTime = Math.min(minResponseTime, data.responseTime);
+                        totalChecks++;
+
+                        if (data.status === 'up') {
+                            upChecks++;
+                        }
+                    }
+                });
+
+                // Store the daily summary
+                const dailySummaryRef = collection(db, 'serverDailySummary');
+                await addDoc(dailySummaryRef, {
+                    serverId,
+                    date: yesterdayStr,
+                    totalChecks,
+                    upChecks,
+                    uptime: totalChecks > 0 ? (upChecks / totalChecks) * 100 : 0,
+                    avgResponseTime: totalChecks > 0 ? totalResponseTime / totalChecks : 0,
+                    maxResponseTime: maxResponseTime !== 0 ? maxResponseTime : null,
+                    minResponseTime: minResponseTime !== Number.MAX_SAFE_INTEGER ? minResponseTime : null,
+                    createdAt: Timestamp.now()
+                });
+
+                console.log(`Archived data for server ${serverId} on ${yesterdayStr}`);
+
+                // Delete the daily data from cronJobs collection
+                const batch = writeBatch(db);
+                let count = 0;
+
+                cronJobsSnapshot.forEach(doc => {
+                    batch.delete(doc.ref);
+                    count++;
+
+                    // Firestore batches are limited to 500 operations
+                    if (count >= 450) {
+                        // Commit batch and start a new one
+                        batch.commit();
+                        count = 0;
+                    }
+                });
+
+                // Commit any remaining operations
+                if (count > 0) {
+                    await batch.commit();
+                }
+
+                console.log(`Deleted ${cronJobsSnapshot.size} records for server ${serverId} on ${yesterdayStr}`);
+            }
+        }
+
+        console.log("Data retention policy completed successfully");
+    } catch (err) {
+        console.error("Error running data retention policy:", err);
+    }
 };
 
 // Send alert email for a server status change
@@ -300,7 +513,7 @@ export async function GET(req) {
         // }
 
         // Get servers that need to be checked
-        const serversRef = collection(db, 'servers');
+        const serversRef = collection(db, SERVERS_COLLECTION);
         const querySnapshot = await getDocs(serversRef);
 
         const results = {
@@ -371,8 +584,13 @@ export async function GET(req) {
                     lastChecked: checkResult.lastChecked
                 };
 
+                // Record the last status change if status changed
+                if (oldStatus !== checkResult.status) {
+                    updateData.lastStatusChange = checkResult.lastChecked;
+                }
+
                 // Queue update in batch
-                batch.update(doc(db, 'servers', server.id), updateData);
+                batch.update(doc(db, SERVERS_COLLECTION, server.id), updateData);
 
                 // Determine if alert should be sent
                 const shouldSendAlert =
@@ -432,6 +650,12 @@ export async function GET(req) {
             }
         }
 
+        for (const result of serverResults) {
+            if (result.action === 'checked') {
+                result.aggregatedData = await getAggregatedData(result.server.id);
+            }
+        }
+
         // Commit all database updates at once
         await batch.commit();
 
@@ -459,7 +683,7 @@ export async function POST(req) {
         }
 
         // Get server data
-        const serverDoc = await getDoc(doc(db, 'servers', serverId));
+        const serverDoc = await getDoc(doc(db, SERVERS_COLLECTION, serverId));
 
         if (!serverDoc.exists()) {
             return NextResponse.json(
@@ -478,12 +702,19 @@ export async function POST(req) {
         const checkResult = await checkServerStatus(server);
 
         // Update server status in database
-        await updateDoc(doc(db, 'servers', server.id), {
+        const updateData = {
             status: checkResult.status,
             responseTime: checkResult.responseTime,
             error: checkResult.error,
             lastChecked: checkResult.lastChecked
-        });
+        };
+
+        // Record the last status change if status changed
+        if (oldStatus !== checkResult.status) {
+            updateData.lastStatusChange = checkResult.lastChecked;
+        }
+
+        await updateDoc(doc(db, SERVERS_COLLECTION, server.id), updateData);
 
         // Send alert if status changed
         if (oldStatus !== checkResult.status ||
@@ -498,9 +729,12 @@ export async function POST(req) {
             );
         }
 
+        const aggregatedData = await getAggregatedData(server.id);
+
         return NextResponse.json({
             message: 'Server checked successfully',
-            result: checkResult
+            result: checkResult,
+            aggregatedData
         });
     } catch (error) {
         console.error('Error checking server:', error);
