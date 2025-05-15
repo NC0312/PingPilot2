@@ -155,7 +155,6 @@ const SideBar = () => {
                                 whileHover={{ rotate: 10, scale: 1.05 }}
                                 transition={{ duration: 0.2 }}
                             />
-                            <span className="ml-2 text-lg font-bold">Ping Pilot</span>
                         </div>
                     )}
 
