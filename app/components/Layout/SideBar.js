@@ -151,8 +151,8 @@ const SideBar = () => {
                             <motion.img
                                 src='/logo.png'
                                 alt="Ping Pilot Logo"
-                                className="h-8"
-                                whileHover={{ rotate: 10, scale: 1.05 }}
+                                className="h-16 w-40"
+                                // whileHover={{ rotate: 10, scale: 1.05 }}
                                 transition={{ duration: 0.2 }}
                             />
                         </div>
