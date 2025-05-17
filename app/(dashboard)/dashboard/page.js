@@ -319,9 +319,9 @@ export default function AdminServersPage() {
             >
               <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
             </button>
-            <button className="bg-gray-700 hover:bg-gray-600 p-2 rounded">
+            {/* <button className="bg-gray-700 hover:bg-gray-600 p-2 rounded">
               <Settings size={20} />
-            </button>
+            </button> */}
           </div>
         </div>
 
