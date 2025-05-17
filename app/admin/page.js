@@ -263,7 +263,7 @@ export default function AdminDashboard() {
                                 Manage Users
                             </button>
                         </Link>
-                        <Link href="/admin/servers" className="group">
+                        <Link href="/dashboard" className="group">
                             <button className="w-full bg-gradient-to-br from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white rounded-lg p-4 text-sm flex items-center justify-center transition-all duration-200 shadow-md hover:shadow-lg group-hover:translate-y-[-2px]">
                                 <Server size={18} className="mr-2 group-hover:animate-pulse" />
                                 View Servers
