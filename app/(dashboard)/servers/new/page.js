@@ -2,15 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, addDoc, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/app/firebase/config';
 import { useAuth } from '@/app/context/AuthContext';
 import { ServerForm } from '@/app/components/Servers/ServerForm';
 import { MonitoringForm } from '@/app/components/Servers/MonitoringForm';
 import { AlertTriangle, CheckCircle, ArrowLeft, Server, ArrowRight, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { getPlanLimits } from '@/app/components/subscriptionPlans';
-
 
 export default function NewServerPage() {
     const [step, setStep] = useState(1);
@@ -25,7 +22,7 @@ export default function NewServerPage() {
     const [fetchingUserData, setFetchingUserData] = useState(true);
 
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, apiRequest } = useAuth();
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -33,32 +30,35 @@ export default function NewServerPage() {
 
             try {
                 setFetchingUserData(true);
-                // Get user data including subscription info
-                const userRef = doc(db, 'users', user.uid);
-                const userSnap = await getDoc(userRef);
 
-                if (userSnap.exists()) {
-                    const userData = userSnap.data();
+                // Get current user data with subscription info
+                const userData = user;
 
-                    // Set plan type from subscription 
-                    const planType = userData.subscription?.plan || 'free';
-                    setUserPlan(planType);
+                // Set plan type from subscription
+                const planType = userData.subscription?.plan || 'free';
+                setUserPlan(planType);
 
-                    // Get limits based on user role and plan
-                    // If user is admin, they get unlimited servers regardless of plan
-                    if (userData.role === 'admin') {
-                        setMaxServers(Infinity);
-                    } else {
-                        // Get max servers from plan limits
-                        const planLimits = getPlanLimits(userData);
-                        setMaxServers(planLimits.maxServers);
+                // Get limits based on user role and plan
+                // If user is admin, they get unlimited servers regardless of plan
+                if (userData.role === 'admin') {
+                    setMaxServers(Infinity);
+                } else {
+                    // Get max servers from plan limits
+                    const planLimits = getPlanLimits(userData);
+                    setMaxServers(planLimits.maxServers);
+                }
+
+                // Count current servers
+                try {
+                    const response = await apiRequest('/api/servers', {
+                        method: 'GET'
+                    });
+
+                    if (response.status === 'success' && response.data.servers) {
+                        setServerCount(response.data.servers.length);
                     }
-
-                    // Count current servers
-                    const serversRef = collection(db, 'servers');
-                    const q = query(serversRef, where('uploadedBy', '==', user.uid));
-                    const querySnapshot = await getDocs(q);
-                    setServerCount(querySnapshot.size);
+                } catch (err) {
+                    console.error('Error fetching servers:', err);
                 }
             } catch (err) {
                 console.error('Error fetching user data:', err);
@@ -69,7 +69,7 @@ export default function NewServerPage() {
         };
 
         fetchUserData();
-    }, [user]);
+    }, [user, apiRequest]);
 
     const handleServerFormSubmit = (data) => {
         setServerData(data);
@@ -91,25 +91,12 @@ export default function NewServerPage() {
                 throw new Error(`You've reached your plan's limit of ${maxServers} servers. Please upgrade to add more servers.`);
             }
 
-            // Calculate trial end date (2 days from now) for free users
-            const trialEnd = userPlan === 'free'
-                ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).getTime()
-                : null;
-
             // Prepare server document
-            const serverDoc = {
+            const serverData = {
                 name: serverFormData.name,
                 url: serverFormData.url,
                 type: serverFormData.type || 'website',
                 description: serverFormData.description || '',
-                uploadedBy: user.uid,
-                uploadedAt: new Date().toISOString(),
-                uploadedRole: user.role || 'user',
-                uploadedPlan: userPlan, // Store the plan used when adding the server
-                status: 'unknown',
-                lastChecked: null,
-                responseTime: null,
-                error: null,
                 monitoring: {
                     frequency: monitoringFormData.checkFrequency || 5,
                     daysOfWeek: monitoringFormData.monitoringDays || [1, 2, 3, 4, 5],
@@ -128,22 +115,28 @@ export default function NewServerPage() {
                             start: monitoringFormData.alertTimeRange?.start || '09:00',
                             end: monitoringFormData.alertTimeRange?.end || '17:00'
                         }
-                    },
-                    trialEndsAt: trialEnd
+                    }
                 },
                 contactEmails: monitoringFormData.emails || [],
                 contactPhones: monitoringFormData.phones || [],
             };
 
-            // Add to Firestore
-            const serverRef = await addDoc(collection(db, 'servers'), serverDoc);
+            // Send to API
+            const response = await apiRequest('/api/servers', {
+                method: 'POST',
+                body: JSON.stringify(serverData)
+            });
 
-            setSuccess(true);
+            if (response.status === 'success') {
+                setSuccess(true);
 
-            // Redirect to server details after 2 seconds
-            setTimeout(() => {
-                router.push('/servers');
-            }, 2000);
+                // Redirect to server details after 2 seconds
+                setTimeout(() => {
+                    router.push('/servers');
+                }, 2000);
+            } else {
+                throw new Error(response.message || 'Failed to add server');
+            }
         } catch (err) {
             console.error('Error adding server:', err);
             setError(err.message || 'Failed to add server');

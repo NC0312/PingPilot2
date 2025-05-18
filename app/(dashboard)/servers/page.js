@@ -15,9 +15,8 @@ import {
     Globe
 } from 'lucide-react';
 import Link from 'next/link';
-import { collection, query, where, orderBy, getDocs, onSnapshot, limit, Timestamp } from 'firebase/firestore';
-import { db } from '@/app/firebase/config';
 import { useAuth } from '@/app/context/AuthContext';
+import { getApiUrl } from '@/lib/apiConfig';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function ServersPage() {
@@ -27,97 +26,85 @@ export default function ServersPage() {
     const [selectedServer, setSelectedServer] = useState(null);
     const [responseTimeData, setResponseTimeData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
-    const { user } = useAuth();
+    const { user, apiRequest } = useAuth();
 
-    // Fetch servers from Firestore
-    useEffect(() => {
+    // Fetch servers from API
+    const fetchServers = async () => {
         if (!user) {
             setLoading(false);
             return;
         }
 
-        setLoading(true);
-
         try {
-            const serversRef = collection(db, 'servers');
-            const q = query(
-                serversRef,
-                where('uploadedBy', '==', user.uid),
-                orderBy('uploadedAt', 'desc')
-            );
+            setLoading(true);
+            
+            // Make API request to get servers
+            const response = await apiRequest('/api/servers', {
+                method: 'GET'
+            });
 
-            // Set up real-time listener
-            const unsubscribe = onSnapshot(q, (querySnapshot) => {
-                const serversList = [];
-                querySnapshot.forEach((doc) => {
-                    serversList.push({
-                        id: doc.id,
-                        ...doc.data()
-                    });
-                });
-
+            if (response.status === 'success' && response.data.servers) {
+                const serversList = response.data.servers;
+                
                 setServers(serversList);
 
                 // If we have servers, select the first one by default
                 if (serversList.length > 0 && !selectedServer) {
                     setSelectedServer(serversList[0]);
-                    fetchServerHistory(serversList[0].id);
+                    fetchServerHistory(serversList[0]._id || serversList[0].id);
                 } else if (selectedServer) {
                     // Update selected server if it's in the list
-                    const updatedServer = serversList.find(s => s.id === selectedServer.id);
+                    const serverId = selectedServer._id || selectedServer.id;
+                    const updatedServer = serversList.find(s => (s._id === serverId || s.id === serverId));
                     if (updatedServer) {
                         setSelectedServer(updatedServer);
-                        // Fetch history for the selected server
-                        fetchServerHistory(selectedServer.id);
+                        fetchServerHistory(serverId);
                     }
                 }
-
-                setLoading(false);
-            }, (err) => {
-                console.error('Error fetching servers:', err);
-                setError('Failed to load servers. Please try again.');
-                setLoading(false);
-            });
-
-            return () => unsubscribe();
+            }
         } catch (err) {
-            console.error('Error setting up server listener:', err);
+            console.error('Error fetching servers:', err);
             setError('Failed to load servers. Please try again.');
+        } finally {
             setLoading(false);
+        }
+    };
+
+    // Set up initial data loading
+    useEffect(() => {
+        if (user) {
+            fetchServers();
+            
+            // Set up refresh interval - every 60 seconds
+            const intervalId = setInterval(() => {
+                fetchServers();
+            }, 60 * 1000);
+
+            return () => clearInterval(intervalId);
         }
     }, [user]);
 
-    // Fetch server history data from cronJob collection
+    // Fetch server history data
     const fetchServerHistory = async (serverId) => {
         try {
-            // Calculate 24 hours ago from current time
-            const now = new Date();
-            const startOf24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            // Get the last 24 hours of history data
+            const response = await apiRequest(`/api/servers/${serverId}/history?period=24h`, {
+                method: 'GET'
+            });
 
-            const cronJobRef = collection(db, 'cronJobs');
-            const q = query(
-                cronJobRef,
-                where('serverId', '==', serverId),
-                where('timestamp', '>=', Timestamp.fromDate(startOf24Hours)),
-                orderBy('timestamp', 'desc')
-            );
-
-            const querySnapshot = await getDocs(q);
-
-            // Transform data for chart and processing
-            const historicalData = querySnapshot.docs
-                .map(doc => {
-                    const data = doc.data();
-                    const date = data.timestamp.toDate();
+            if (response.status === 'success' && response.data.history) {
+                // Transform data for chart and processing
+                const historicalData = response.data.history.map(check => {
+                    const date = new Date(check.timestamp);
                     return {
                         time: date, // Store as Date object for easier filtering
-                        avgTime: data.responseTime || 0,
-                        status: data.status || 'unknown'
+                        avgTime: check.responseTime || 0,
+                        status: check.status || 'unknown'
                     };
-                })
-                .sort((a, b) => a.time - b.time); // Sort chronologically
+                }).sort((a, b) => a.time - b.time); // Sort chronologically
 
-            setResponseTimeData(historicalData);
+                setResponseTimeData(historicalData);
+            }
         } catch (err) {
             console.error('Error fetching server history:', err);
             setError('Failed to load server history');
@@ -130,30 +117,43 @@ export default function ServersPage() {
 
         try {
             setRefreshing(true);
+            const serverId = selectedServer._id || selectedServer.id;
 
             // Call the API endpoint to manually check the server
-            const response = await fetch(`/api/servers/${selectedServer.id}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-id': user.uid
-                },
-                body: JSON.stringify({ action: 'check' })
+            const response = await apiRequest(`/api/servers/${serverId}/check`, {
+                method: 'POST'
             });
 
-            if (!response.ok) {
-                throw new Error('Failed to check server');
+            if (response.status === 'success') {
+                // Update the selected server with new status
+                setSelectedServer(prev => ({
+                    ...prev,
+                    status: response.data.status,
+                    responseTime: response.data.responseTime,
+                    error: response.data.error,
+                    lastChecked: response.data.lastChecked
+                }));
+
+                // Update the server in the servers list
+                setServers(prev => prev.map(server => 
+                    (server._id === serverId || server.id === serverId) 
+                        ? {
+                            ...server,
+                            status: response.data.status,
+                            responseTime: response.data.responseTime,
+                            error: response.data.error,
+                            lastChecked: response.data.lastChecked
+                        }
+                        : server
+                ));
+
+                // Fetch updated server history
+                fetchServerHistory(serverId);
             }
-
-            const result = await response.json();
-
-            // Fetch updated server history
-            fetchServerHistory(selectedServer.id);
-
-            setRefreshing(false);
         } catch (err) {
             console.error('Error refreshing server:', err);
             setError('Failed to refresh server status. Please try again.');
+        } finally {
             setRefreshing(false);
         }
     };
@@ -161,24 +161,14 @@ export default function ServersPage() {
     // Handle server selection
     const handleServerSelect = (server) => {
         setSelectedServer(server);
-        fetchServerHistory(server.id);
+        fetchServerHistory(server._id || server.id);
     };
 
     // Format a timestamp into a readable format
     const formatTimestamp = (timestamp) => {
         if (!timestamp) return 'Never';
 
-        let date;
-        if (timestamp instanceof Timestamp) {
-            date = timestamp.toDate();
-        } else if (typeof timestamp === 'string') {
-            date = new Date(timestamp);
-        } else if (typeof timestamp === 'object' && timestamp.seconds) {
-            date = new Date(timestamp.seconds * 1000);
-        } else {
-            date = new Date(timestamp);
-        }
-
+        const date = new Date(timestamp);
         return date.toLocaleString();
     };
 
@@ -279,7 +269,7 @@ export default function ServersPage() {
 
             return (
                 <div className="bg-gray-800 p-2 border border-gray-700 rounded shadow-md">
-                    <p className="text-gray-300 text-sm">{`Time: ${label}`}</p>
+                    <p className="text-gray-300 text-sm">{`Time: ${new Date(label).toLocaleTimeString()}`}</p>
                     <p className="text-blue-400 text-sm">{`Response Time: ${payload[0].value} ms`}</p>
                     <p className={`text-sm ${status === 'up' ? 'text-green-400' : 'text-red-400'}`}>
                         Status: {status === 'up' ? 'Online' : 'Down'}
@@ -288,6 +278,14 @@ export default function ServersPage() {
             );
         }
         return null;
+    };
+
+    // Format chart data for display
+    const formatChartData = (data) => {
+        return data.map(item => ({
+            ...item,
+            time: new Date(item.time).toLocaleTimeString(),
+        }));
     };
 
     if (loading && servers.length === 0) {
@@ -327,7 +325,7 @@ export default function ServersPage() {
                     <h3 className="text-xl font-medium text-white mb-2">Error Loading Servers</h3>
                     <p className="text-red-200 mb-4">{error}</p>
                     <button
-                        onClick={() => window.location.reload()}
+                        onClick={() => fetchServers()}
                         className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded inline-flex items-center"
                     >
                         <RefreshCw size={18} className="mr-2" />
@@ -374,15 +372,15 @@ export default function ServersPage() {
                 <div className="flex items-center space-x-3">
                     <div className="relative">
                         <select
-                            value={selectedServer?.id || ''}
+                            value={(selectedServer?._id || selectedServer?.id) || ''}
                             onChange={(e) => {
-                                const selected = servers.find(s => s.id === e.target.value);
-                                handleServerSelect(selected);
+                                const selected = servers.find(s => (s._id === e.target.value || s.id === e.target.value));
+                                if (selected) handleServerSelect(selected);
                             }}
                             className="bg-gray-800 border border-gray-700 rounded-lg py-2 pl-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                             {servers.map(server => (
-                                <option key={server.id} value={server.id}>
+                                <option key={server._id || server.id} value={server._id || server.id}>
                                     {server.name}
                                 </option>
                             ))}
@@ -501,26 +499,32 @@ export default function ServersPage() {
                     <div className="bg-gray-800 rounded-lg p-4 mb-8">
                         <h2 className="text-center text-sm font-medium text-blue-400 mb-2">Response Time (ms)</h2>
                         <div className="h-72">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={responseTimeData} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                    <XAxis dataKey="time" stroke="#94a3b8" />
-                                    <YAxis stroke="#94a3b8" />
-                                    <Tooltip content={CustomTooltip} />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="avgTime"
-                                        stroke="#3b82f6"
-                                        strokeWidth={2}
-                                        activeDot={{ r: 5, fill: "#3b82f6" }}
-                                        dot={(props) => {
-                                            const { cx, cy, payload } = props;
-                                            const fill = payload.status === 'up' ? '#3b82f6' : '#ef4444';
-                                            return <circle cx={cx} cy={cy} r={3} fill={fill} />;
-                                        }}
-                                    />
-                                </LineChart>
-                            </ResponsiveContainer>
+                            {responseTimeData.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={formatChartData(responseTimeData)} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                                        <XAxis dataKey="time" stroke="#94a3b8" />
+                                        <YAxis stroke="#94a3b8" />
+                                        <Tooltip content={CustomTooltip} />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="avgTime"
+                                            stroke="#3b82f6"
+                                            strokeWidth={2}
+                                            activeDot={{ r: 5, fill: "#3b82f6" }}
+                                            dot={(props) => {
+                                                const { cx, cy, payload } = props;
+                                                const fill = payload.status === 'up' ? '#3b82f6' : '#ef4444';
+                                                return <circle cx={cx} cy={cy} r={3} fill={fill} />;
+                                            }}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-gray-400">
+                                    <p>No historical data available</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -539,7 +543,7 @@ export default function ServersPage() {
                                 </div>
                                 <div>
                                     <p className="text-xs text-gray-400">Added On</p>
-                                    <p className="text-sm">{formatTimestamp(selectedServer.uploadedAt)}</p>
+                                    <p className="text-sm">{formatTimestamp(selectedServer.uploadedAt || selectedServer.createdAt)}</p>
                                 </div>
                                 {selectedServer.description && (
                                     <div>
@@ -623,7 +627,7 @@ export default function ServersPage() {
                             Refresh Status
                         </button>
 
-                        <Link href={`/servers/${selectedServer.id}/settings`}>
+                        <Link href={`/servers/${selectedServer._id || selectedServer.id}/settings`}>
                             <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm px-4 py-2 flex items-center">
                                 <Settings size={16} className="mr-2" />
                                 Manage Server

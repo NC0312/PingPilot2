@@ -208,6 +208,10 @@ export const AuthProvider = ({ children }) => {
             const data = await response.json();
 
             if (!response.ok) {
+                // Check for email_not_verified error code
+                if (data.code === 'email_not_verified') {
+                    throw new Error(data.message || 'Please verify your email before logging in');
+                }
                 throw new Error(data.message || 'Authentication failed');
             }
 
@@ -286,7 +290,7 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // Password reset request
+    // Request password reset (forgot password)
     const resetPassword = async (email) => {
         setError(null);
 
@@ -416,12 +420,16 @@ export const AuthProvider = ({ children }) => {
         setError(null);
 
         try {
-            const response = await fetch(getApiUrl('/api/auth/verify-email'), {
+            // Properly append query parameters to the URL
+            const url = new URL(getApiUrl('/api/auth/verify-email'));
+            url.searchParams.append('token', token);
+            url.searchParams.append('userId', userId);
+
+            const response = await fetch(url, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                },
-                params: { token, userId }
+                }
             });
 
             const data = await response.json();
@@ -472,9 +480,121 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('Invalid role');
             }
 
-            const data = await apiRequest(`/api/users/${userId}`, {
+            await apiRequest(`/api/users/${userId}`, {
                 method: 'PATCH',
                 body: JSON.stringify({ role: newRole })
+            });
+
+            return true;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Make admin (for admin creation endpoint)
+    const makeAdmin = async (email, password, displayName, existingUserId = null) => {
+        setError(null);
+
+        try {
+            if (!user || user.role !== 'admin') {
+                throw new Error('Unauthorized: Only admins can create other admins');
+            }
+
+            const requestBody = existingUserId
+                ? { existingUserId }
+                : { email, password, displayName };
+
+            const data = await apiRequest('/api/admin/create', {
+                method: 'POST',
+                body: JSON.stringify(requestBody)
+            });
+
+            return data.data.user;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Initial admin setup (first admin setup)
+    const setupInitialAdmin = async (email, password, displayName, setupToken) => {
+        setError(null);
+        setLoading(true);
+
+        try {
+            const response = await fetch(getApiUrl('/api/admin/initial-setup'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email,
+                    password,
+                    displayName,
+                    setupToken
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Initial admin setup failed');
+            }
+
+            // Store tokens if they were returned
+            if (data.data.token) {
+                localStorage.setItem('token', data.data.token);
+            }
+            if (data.data.refreshToken) {
+                localStorage.setItem('refreshToken', data.data.refreshToken);
+            }
+
+            setUser(data.data.user);
+            return data.data.user;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Get list of admins
+    const getAdminList = async () => {
+        setError(null);
+
+        try {
+            if (!user || user.role !== 'admin') {
+                throw new Error('Unauthorized: Only admins can view admin list');
+            }
+
+            const data = await apiRequest('/api/admin/list', {
+                method: 'GET'
+            });
+
+            return data.data.admins;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Revoke admin privileges
+    const revokeAdmin = async (userId) => {
+        setError(null);
+
+        try {
+            if (!user || user.role !== 'admin') {
+                throw new Error('Unauthorized: Only admins can revoke admin privileges');
+            }
+
+            if (userId === user.id) {
+                throw new Error('You cannot revoke your own admin privileges');
+            }
+
+            await apiRequest(`/api/admin/revoke/${userId}`, {
+                method: 'PATCH'
             });
 
             return true;
@@ -506,6 +626,11 @@ export const AuthProvider = ({ children }) => {
             isAdmin,
             updateUserRole,
             apiRequest, // Expose apiRequest for other components to use
+            // New admin management functions
+            makeAdmin,
+            setupInitialAdmin,
+            getAdminList,
+            revokeAdmin
         }}>
             {!loading ? children : <div>Loading...</div>}
         </AuthContext.Provider>

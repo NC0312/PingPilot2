@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { BarChart4, Users, Server, AlertTriangle, Award } from 'lucide-react';
-import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
-import { db } from '@/app/firebase/config';
 import Link from 'next/link';
+import axios from 'axios';
+
+// Set the base URL for API requests
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState({
@@ -23,6 +25,36 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Get token from local storage for authentication
+    const getToken = () => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('token');
+        }
+        return null;
+    };
+
+    // Setup axios instance with authorization headers
+    const authAxios = axios.create({
+        baseURL: API_BASE_URL,
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+
+    // Add interceptor to add token to every request
+    authAxios.interceptors.request.use(
+        config => {
+            const token = getToken();
+            if (token) {
+                config.headers['Authorization'] = `Bearer ${token}`;
+            }
+            return config;
+        },
+        error => {
+            return Promise.reject(error);
+        }
+    );
+
     useEffect(() => {
         const fetchAdminStats = async () => {
             setLoading(true);
@@ -30,32 +62,25 @@ export default function AdminDashboard() {
 
             try {
                 // Fetch total users count
-                const usersRef = collection(db, 'users');
-                const usersSnapshot = await getDocs(usersRef);
-                const userCount = usersSnapshot.size;
+                const usersResponse = await authAxios.get('/users');
+                const userCount = usersResponse.data.total || 0;
 
-                // Fetch total servers count
-                const serversRef = collection(db, 'servers');
-                const serversSnapshot = await getDocs(serversRef);
-                const serverCount = serversSnapshot.size;
+                // Fetch total servers count and active alerts
+                const serversResponse = await authAxios.get('/servers?admin=true');
+                const serverCount = serversResponse.data.total || 0;
 
-                // Count active alerts (servers with status 'down' or 'error')
-                const alertQuery = query(
-                    serversRef,
-                    where('status', 'in', ['down', 'error'])
-                );
-                const alertSnapshot = await getDocs(alertQuery);
-                const alertCount = alertSnapshot.size;
+                // Count servers with status 'down' or 'error'
+                const alertCount = serversResponse.data.data.servers.filter(
+                    server => server.status === 'down' || server.error
+                ).length;
 
                 // Calculate uptime percentage based on server status
                 let uptimePercentage = 0;
                 if (serverCount > 0) {
-                    const upServers = query(
-                        serversRef,
-                        where('status', '==', 'up')
-                    );
-                    const upServersSnapshot = await getDocs(upServers);
-                    uptimePercentage = ((upServersSnapshot.size / serverCount) * 100).toFixed(1);
+                    const upServers = serversResponse.data.data.servers.filter(
+                        server => server.status === 'up'
+                    ).length;
+                    uptimePercentage = ((upServers / serverCount) * 100).toFixed(1);
                 }
 
                 setStats({
@@ -65,74 +90,77 @@ export default function AdminDashboard() {
                     uptime: uptimePercentage
                 });
 
-                // Fetch recent activity
-                // In a real implementation, you would have an activityLogs collection
-                // For now, we'll synthesize activity from servers and users collections
+                // Fetch recent activity from servers, ordered by most recent
+                const recentServersResponse = await authAxios.get('/servers?admin=true&sortBy=uploadedAt&sortDir=desc&limit=5');
+                const recentServers = recentServersResponse.data.data.servers;
 
-                // Get recent server additions
-                const recentServersQuery = query(
-                    serversRef,
-                    orderBy('uploadedAt', 'desc'),
-                    limit(5)
-                );
-                const recentServersSnapshot = await getDocs(recentServersQuery);
+                // Transform server data into activity entries
+                const activities = await Promise.all(recentServers.map(async server => {
+                    try {
+                        // Get user info for each server
+                        const userResponse = await authAxios.get(`/users/${server.uploadedBy}`);
+                        const userData = userResponse.data.data.user;
+                        const displayName = userData.displayName || userData.email || 'Unknown user';
 
-                const serverActivities = [];
-                for (const serverDoc of recentServersSnapshot.docs) {
-                    const serverData = serverDoc.data();
+                        // Calculate time ago
+                        const uploadedAt = new Date(server.uploadedAt);
+                        const now = new Date();
+                        const diffInMilliseconds = now - uploadedAt;
 
-                    // Get user info for each server
-                    if (serverData.uploadedBy) {
-                        const userRef = collection(db, 'users');
-                        const userQuery = query(userRef, where('uid', '==', serverData.uploadedBy));
-                        const userSnapshot = await getDocs(userQuery);
-
-                        if (!userSnapshot.empty) {
-                            const userData = userSnapshot.docs[0].data();
-                            const displayName = userData.displayName || userData.email || 'Unknown user';
-
-                            // Calculate time ago
-                            const uploadedAt = new Date(serverData.uploadedAt);
-                            const now = new Date();
-                            const diffInMilliseconds = now - uploadedAt;
-
-                            let timeAgo;
-                            if (diffInMilliseconds < 60000) { // less than a minute
-                                timeAgo = 'just now';
-                            } else if (diffInMilliseconds < 3600000) { // less than an hour
-                                const minutes = Math.floor(diffInMilliseconds / 60000);
-                                timeAgo = `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
-                            } else if (diffInMilliseconds < 86400000) { // less than a day
-                                const hours = Math.floor(diffInMilliseconds / 3600000);
-                                timeAgo = `${hours} hour${hours !== 1 ? 's' : ''} ago`;
-                            } else {
-                                const days = Math.floor(diffInMilliseconds / 86400000);
-                                timeAgo = `${days} day${days !== 1 ? 's' : ''} ago`;
-                            }
-
-                            serverActivities.push({
-                                user: displayName,
-                                action: `added a new server "${serverData.name}"`,
-                                time: timeAgo
-                            });
+                        let timeAgo;
+                        if (diffInMilliseconds < 60000) { // less than a minute
+                            timeAgo = 'just now';
+                        } else if (diffInMilliseconds < 3600000) { // less than an hour
+                            const minutes = Math.floor(diffInMilliseconds / 60000);
+                            timeAgo = `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+                        } else if (diffInMilliseconds < 86400000) { // less than a day
+                            const hours = Math.floor(diffInMilliseconds / 3600000);
+                            timeAgo = `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+                        } else {
+                            const days = Math.floor(diffInMilliseconds / 86400000);
+                            timeAgo = `${days} day${days !== 1 ? 's' : ''} ago`;
                         }
+
+                        return {
+                            user: displayName,
+                            action: `added a new server "${server.name}"`,
+                            time: timeAgo
+                        };
+                    } catch (err) {
+                        console.error('Error fetching user data:', err);
+                        return null;
                     }
+                }));
+
+                // Filter out any null values from the activities array
+                setRecentActivity(activities.filter(activity => activity !== null));
+
+                // Check system status (API health endpoint)
+                try {
+                    await authAxios.get('/health');
+                    setSystemStatus({
+                        ...systemStatus,
+                        api: 'Operational'
+                    });
+                } catch (err) {
+                    setSystemStatus({
+                        ...systemStatus,
+                        api: 'Partial Outage'
+                    });
                 }
 
-                // Fetch system status (this would typically come from a status collection)
-                // For now, we'll simulate this with a random issue for demo purposes
-                const services = ['api', 'database', 'notification', 'monitoring'];
+                // Simulate other system status checks
+                // In a real implementation, you would check each service individually
+                const services = ['database', 'notification', 'monitoring'];
                 const randomService = services[Math.floor(Math.random() * services.length)];
                 const randomStatus = Math.random() > 0.8 ? 'Partial Outage' : 'Operational';
 
-                setSystemStatus({
-                    ...systemStatus,
+                setSystemStatus(prevStatus => ({
+                    ...prevStatus,
                     [randomService]: randomStatus
-                });
-
-                setRecentActivity(serverActivities);
-            } catch (error) {
-                console.error('Error fetching admin stats:', error);
+                }));
+            } catch (err) {
+                console.error('Error fetching admin stats:', err);
                 setError('Failed to load admin dashboard data. Please try again.');
             } finally {
                 setLoading(false);

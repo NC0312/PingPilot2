@@ -5,9 +5,9 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
-import { collection, query, getDocs, where, orderBy, limit, Timestamp } from 'firebase/firestore';
-import { db } from '@/app/firebase/config';
 import { Calendar, ArrowDownUp, Filter, RefreshCw, AlertTriangle } from 'lucide-react';
+import { useAuth } from '@/app/context/AuthContext';
+import { getApiUrl } from '@/lib/apiConfig';
 
 export default function AdminAnalytics() {
     const [loading, setLoading] = useState(true);
@@ -30,6 +30,8 @@ export default function AdminAnalytics() {
         serversChange: 0,
         usersChange: 0
     });
+
+    const { apiRequest } = useAuth();
 
     // Different colors for the pie charts
     const COLORS = ['#0088FE', '#FF8042', '#FFBB28', '#00C49F', '#AF19FF'];
@@ -68,219 +70,254 @@ export default function AdminAnalytics() {
                     previousPeriodEnd = new Date(startDate.getTime() - 1);
             }
 
-            // User growth data - aggregate users by signup date
-            const usersRef = collection(db, 'users');
+            // Format dates for API queries
+            const startDateStr = startDate.toISOString();
+            const previousPeriodStartStr = previousPeriodStart.toISOString();
+            const previousPeriodEndStr = previousPeriodEnd.toISOString();
 
-            // Current period users
-            const usersQuery = query(
-                usersRef,
-                where('createdAt', '>=', startDate.getTime()),
-                orderBy('createdAt', 'asc')
-            );
-
-            const usersSnapshot = await getDocs(usersQuery);
-
-            // Previous period users for comparison
-            const previousUsersQuery = query(
-                usersRef,
-                where('createdAt', '>=', previousPeriodStart.getTime()),
-                where('createdAt', '<=', previousPeriodEnd.getTime())
-            );
-
-            const previousUsersSnapshot = await getDocs(previousUsersQuery);
-
-            // Group users by date for the chart
-            const usersByDate = {};
-
-            usersSnapshot.forEach(doc => {
-                const userData = doc.data();
-                const createdAt = new Date(userData.createdAt);
-
-                // Format date based on range
-                let dateKey;
-                if (dateRange === 'week') {
-                    dateKey = createdAt.toLocaleDateString('en-US', { weekday: 'short' });
-                } else if (dateRange === 'month') {
-                    dateKey = createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                } else { // year
-                    dateKey = createdAt.toLocaleDateString('en-US', { month: 'short' });
-                }
-
-                if (!usersByDate[dateKey]) {
-                    usersByDate[dateKey] = 0;
-                }
-                usersByDate[dateKey]++;
-            });
-
-            // Convert to array format for chart
-            const userGrowthData = Object.keys(usersByDate).map(date => ({
-                name: date,
-                users: usersByDate[date]
-            }));
-
-            // Server status data - get current status distribution
-            const serversRef = collection(db, 'servers');
-            const serversSnapshot = await getDocs(serversRef);
-
-            // Current period servers
-            const currentServersQuery = query(
-                serversRef,
-                where('uploadedAt', '>=', startDate.toISOString())
-            );
-
-            const currentServersSnapshot = await getDocs(currentServersQuery);
-
-            // Previous period servers for comparison
-            const previousServersQuery = query(
-                serversRef,
-                where('uploadedAt', '>=', previousPeriodStart.toISOString()),
-                where('uploadedAt', '<=', previousPeriodEnd.toISOString())
-            );
-
-            const previousServersSnapshot = await getDocs(previousServersQuery);
-
-            const statusCounts = { up: 0, down: 0 };
-            let totalResponseTime = 0;
-            let responseTimeCount = 0;
-
-            serversSnapshot.forEach(doc => {
-                const serverData = doc.data();
-                if (serverData.status === 'up') {
-                    statusCounts.up++;
-
-                    // Calculate average response time
-                    if (serverData.responseTime) {
-                        totalResponseTime += serverData.responseTime;
-                        responseTimeCount++;
-                    }
-                } else {
-                    // Any status that's not 'up' is considered 'down'
-                    statusCounts.down++;
+            // Fetch analytics data from API
+            const analyticsResponse = await apiRequest('/api/admin/analytics', {
+                method: 'GET',
+                params: {
+                    startDate: startDateStr,
+                    endDate: now.toISOString(),
+                    prevStartDate: previousPeriodStartStr,
+                    prevEndDate: previousPeriodEndStr,
+                    period: dateRange
                 }
             });
 
-            const serverStatusData = [
-                { name: 'Up', value: statusCounts.up },
-                { name: 'Down', value: statusCounts.down }
-            ];
+            if (analyticsResponse.status !== 'success') {
+                throw new Error(analyticsResponse.message || 'Failed to fetch analytics data');
+            }
 
-            // For alerts by type, in a real implementation, you would have a dedicated collection
-            // For this example, we'll analyze server error messages to categorize issues
-            const alertsQuery = query(
-                serversRef,
-                where('status', 'in', ['down', 'error'])
-            );
+            const analyticsData = analyticsResponse.data;
 
-            const alertsSnapshot = await getDocs(alertsQuery);
+            // If API returns formatted data, use it directly
+            if (analyticsData && analyticsData.userGrowth && analyticsData.serverStatus &&
+                analyticsData.alertsByType && analyticsData.responseTime && analyticsData.kpis) {
 
-            const alertsByType = {
-                'Response Time': 0,
-                'Connection Failed': 0,
-                'Certificate Error': 0,
-                'DNS Error': 0,
-                'Other': 0
-            };
+                setData({
+                    userGrowth: analyticsData.userGrowth,
+                    serverStatus: analyticsData.serverStatus,
+                    alertsByType: analyticsData.alertsByType,
+                    responseTime: analyticsData.responseTime
+                });
 
-            alertsSnapshot.forEach(doc => {
-                const serverData = doc.data();
-                const errorMessage = serverData.error || '';
+                setKpis(analyticsData.kpis);
+            } else {
+                // If API doesn't return formatted data, we need to fetch and process separately
 
-                if (errorMessage.includes('timeout') || errorMessage.includes('slow')) {
-                    alertsByType['Response Time']++;
-                } else if (errorMessage.includes('connect') || errorMessage.includes('refused')) {
-                    alertsByType['Connection Failed']++;
-                } else if (errorMessage.includes('certificate') || errorMessage.includes('SSL')) {
-                    alertsByType['Certificate Error']++;
-                } else if (errorMessage.includes('DNS') || errorMessage.includes('resolve')) {
-                    alertsByType['DNS Error']++;
-                } else {
-                    alertsByType['Other']++;
+                // Fetch users
+                const usersResponse = await apiRequest('/api/users', {
+                    method: 'GET'
+                });
+
+                // Fetch servers
+                const serversResponse = await apiRequest('/api/servers?admin=true', {
+                    method: 'GET'
+                });
+
+                if (usersResponse.status !== 'success' || serversResponse.status !== 'success') {
+                    throw new Error('Failed to fetch required data');
                 }
-            });
 
-            const alertsData = Object.keys(alertsByType).map(type => ({
-                name: type,
-                value: alertsByType[type]
-            }));
+                const users = usersResponse.data.users || [];
+                const servers = serversResponse.data.servers || [];
 
-            // Response time data - in a real implementation, you would have historical data
-            // For this example, we'll generate hourly averages from current server data
-            const hourlyResponseTimes = {};
+                // Process user growth data
+                const usersByDate = {};
 
-            serversSnapshot.forEach(doc => {
-                const serverData = doc.data();
-                if (serverData.status === 'up' && serverData.responseTime) {
-                    // Only use servers with valid response times
-                    const lastChecked = new Date(serverData.lastChecked);
-                    const hour = lastChecked.getHours();
+                // Filter users by creation date
+                const currentPeriodUsers = users.filter(user => {
+                    const createdAt = new Date(user.createdAt);
+                    return createdAt >= startDate && createdAt <= now;
+                });
 
-                    // Group by 3-hour intervals for a cleaner chart
-                    const hourGroup = Math.floor(hour / 3) * 3;
-                    const hourKey = `${hourGroup}:00`;
+                const previousPeriodUsers = users.filter(user => {
+                    const createdAt = new Date(user.createdAt);
+                    return createdAt >= previousPeriodStart && createdAt <= previousPeriodEnd;
+                });
 
-                    if (!hourlyResponseTimes[hourKey]) {
-                        hourlyResponseTimes[hourKey] = {
-                            total: 0,
-                            count: 0
-                        };
+                // Group users by date
+                currentPeriodUsers.forEach(user => {
+                    const createdAt = new Date(user.createdAt);
+
+                    // Format date based on range
+                    let dateKey;
+                    if (dateRange === 'week') {
+                        dateKey = createdAt.toLocaleDateString('en-US', { weekday: 'short' });
+                    } else if (dateRange === 'month') {
+                        dateKey = createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    } else { // year
+                        dateKey = createdAt.toLocaleDateString('en-US', { month: 'short' });
                     }
 
-                    hourlyResponseTimes[hourKey].total += serverData.responseTime;
-                    hourlyResponseTimes[hourKey].count++;
-                }
-            });
+                    if (!usersByDate[dateKey]) {
+                        usersByDate[dateKey] = 0;
+                    }
+                    usersByDate[dateKey]++;
+                });
 
-            const responseTimeData = Object.keys(hourlyResponseTimes)
-                .sort((a, b) => {
-                    const hourA = parseInt(a.split(':')[0]);
-                    const hourB = parseInt(b.split(':')[0]);
-                    return hourA - hourB;
-                })
-                .map(hour => ({
-                    name: hour,
-                    avgTime: Math.round(hourlyResponseTimes[hour].total / hourlyResponseTimes[hour].count)
+                const userGrowthData = Object.keys(usersByDate).map(date => ({
+                    name: date,
+                    users: usersByDate[date]
                 }));
 
-            // Calculate KPIs and changes
-            const totalServers = serversSnapshot.size;
-            const avgResponseTime = responseTimeCount > 0 ? Math.round(totalResponseTime / responseTimeCount) : 0;
-            const uptime = totalServers > 0 ? ((statusCounts.up / totalServers) * 100).toFixed(1) : 0;
+                // Process server status data
+                const statusCounts = { up: 0, down: 0 };
+                let totalResponseTime = 0;
+                let responseTimeCount = 0;
 
-            // Calculate changes compared to previous period
-            // For demonstration, we'll generate relative changes
-            // In a real implementation, you'd calculate this from historical data
-            const prevUptime = 99.6; // Placeholder - in a real scenario, calculate from previous data
-            const prevAvgResponseTime = 320; // Placeholder
+                servers.forEach(server => {
+                    if (server.status === 'up') {
+                        statusCounts.up++;
 
-            const currentUsers = usersSnapshot.size;
-            const previousUsers = previousUsersSnapshot.size;
-            const usersChange = previousUsers > 0 ? ((currentUsers - previousUsers) / previousUsers * 100).toFixed(0) : '+100';
+                        // Calculate average response time
+                        if (server.responseTime) {
+                            totalResponseTime += server.responseTime;
+                            responseTimeCount++;
+                        }
+                    } else {
+                        // Any status that's not 'up' is considered 'down'
+                        statusCounts.down++;
+                    }
+                });
 
-            const currentServers = currentServersSnapshot.size;
-            const previousServers = previousServersSnapshot.size;
-            const serversChange = previousServers > 0 ? ((currentServers - previousServers) / previousServers * 100).toFixed(0) : '+100';
+                const serverStatusData = [
+                    { name: 'Up', value: statusCounts.up },
+                    { name: 'Down', value: statusCounts.down }
+                ];
 
-            const uptimeChange = ((parseFloat(uptime) - prevUptime) / prevUptime * 100).toFixed(1);
-            const responseTimeChange = ((avgResponseTime - prevAvgResponseTime) / prevAvgResponseTime * 100).toFixed(0);
+                // Process alerts by type
+                const downServers = servers.filter(server => server.status !== 'up');
 
-            setData({
-                userGrowth: userGrowthData,
-                serverStatus: serverStatusData,
-                alertsByType: alertsData,
-                responseTime: responseTimeData
-            });
+                const alertsByType = {
+                    'Response Time': 0,
+                    'Connection Failed': 0,
+                    'Certificate Error': 0,
+                    'DNS Error': 0,
+                    'Other': 0
+                };
 
-            setKpis({
-                avgResponseTime,
-                uptime,
-                activeServers: totalServers,
-                activeUsers: usersSnapshot.size,
-                responseTimeChange,
-                uptimeChange,
-                serversChange,
-                usersChange
-            });
+                downServers.forEach(server => {
+                    const errorMessage = server.error || '';
 
+                    if (errorMessage.includes('timeout') || errorMessage.includes('slow')) {
+                        alertsByType['Response Time']++;
+                    } else if (errorMessage.includes('connect') || errorMessage.includes('refused')) {
+                        alertsByType['Connection Failed']++;
+                    } else if (errorMessage.includes('certificate') || errorMessage.includes('SSL')) {
+                        alertsByType['Certificate Error']++;
+                    } else if (errorMessage.includes('DNS') || errorMessage.includes('resolve')) {
+                        alertsByType['DNS Error']++;
+                    } else {
+                        alertsByType['Other']++;
+                    }
+                });
+
+                const alertsData = Object.keys(alertsByType).map(type => ({
+                    name: type,
+                    value: alertsByType[type]
+                }));
+
+                // Process response time data
+                // For hourly averages, we'll use the check history if available
+                // Otherwise, simulate from current server data
+                const hourlyResponseTimes = {};
+
+                // Try to get server check history
+                try {
+                    // For each server, get check history
+                    for (const server of servers) {
+                        if (server.status !== 'up') continue;
+
+                        // Placeholder - in a real implementation, fetch history from your API
+                        const lastChecked = new Date(server.lastChecked);
+                        if (!lastChecked) continue;
+
+                        const hour = lastChecked.getHours();
+                        // Group by 3-hour intervals for a cleaner chart
+                        const hourGroup = Math.floor(hour / 3) * 3;
+                        const hourKey = `${hourGroup}:00`;
+
+                        if (!hourlyResponseTimes[hourKey]) {
+                            hourlyResponseTimes[hourKey] = {
+                                total: 0,
+                                count: 0
+                            };
+                        }
+
+                        if (server.responseTime) {
+                            hourlyResponseTimes[hourKey].total += server.responseTime;
+                            hourlyResponseTimes[hourKey].count++;
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error processing response time data:', err);
+                }
+
+                const responseTimeData = Object.keys(hourlyResponseTimes)
+                    .sort((a, b) => {
+                        const hourA = parseInt(a.split(':')[0]);
+                        const hourB = parseInt(b.split(':')[0]);
+                        return hourA - hourB;
+                    })
+                    .map(hour => ({
+                        name: hour,
+                        avgTime: Math.round(hourlyResponseTimes[hour].total / hourlyResponseTimes[hour].count)
+                    }));
+
+                // Calculate KPIs
+                const totalServers = servers.length;
+                const avgResponseTime = responseTimeCount > 0 ? Math.round(totalResponseTime / responseTimeCount) : 0;
+                const uptime = totalServers > 0 ? ((statusCounts.up / totalServers) * 100).toFixed(1) : 0;
+
+                // Calculate changes compared to previous period
+                // For demonstration, use some placeholder values
+                const prevUptime = 99.6;
+                const prevAvgResponseTime = 320;
+
+                const currentUsers = currentPeriodUsers.length;
+                const previousUsers = previousPeriodUsers.length;
+                const usersChange = previousUsers > 0 ? ((currentUsers - previousUsers) / previousUsers * 100).toFixed(0) : '+100';
+
+                // Filter servers by creation date for comparison
+                const currentPeriodServers = servers.filter(server => {
+                    const createdAt = new Date(server.createdAt || server.uploadedAt);
+                    return createdAt >= startDate && createdAt <= now;
+                });
+
+                const previousPeriodServers = servers.filter(server => {
+                    const createdAt = new Date(server.createdAt || server.uploadedAt);
+                    return createdAt >= previousPeriodStart && createdAt <= previousPeriodEnd;
+                });
+
+                const currentServers = currentPeriodServers.length;
+                const previousServers = previousPeriodServers.length;
+                const serversChange = previousServers > 0 ? ((currentServers - previousServers) / previousServers * 100).toFixed(0) : '+100';
+
+                const uptimeChange = ((parseFloat(uptime) - prevUptime) / prevUptime * 100).toFixed(1);
+                const responseTimeChange = ((avgResponseTime - prevAvgResponseTime) / prevAvgResponseTime * 100).toFixed(0);
+
+                setData({
+                    userGrowth: userGrowthData,
+                    serverStatus: serverStatusData,
+                    alertsByType: alertsData,
+                    responseTime: responseTimeData
+                });
+
+                setKpis({
+                    avgResponseTime,
+                    uptime,
+                    activeServers: totalServers,
+                    activeUsers: users.length,
+                    responseTimeChange,
+                    uptimeChange,
+                    serversChange,
+                    usersChange
+                });
+            }
         } catch (error) {
             console.error('Error fetching analytics data:', error);
             setError('Failed to load analytics data. Please try again.');

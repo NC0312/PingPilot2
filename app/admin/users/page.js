@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/app/context/AuthContext';
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/app/firebase/config';
 import { User, ShieldCheck, Shield, MoreVertical, Edit, Trash, Check, X } from 'lucide-react';
 
 export default function UsersManagement() {
-    const { user: currentUser, updateUserRole } = useAuth();
+    const { user: currentUser, updateUserRole, apiRequest } = useAuth();
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedUser, setSelectedUser] = useState(null);
@@ -20,35 +18,38 @@ export default function UsersManagement() {
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const usersCollection = collection(db, 'users');
-                const usersSnapshot = await getDocs(usersCollection);
+                setLoading(true);
 
-                const usersList = usersSnapshot.docs.map(doc => {
-                    const userData = doc.data();
-                    // Don't include password in the UI
-                    delete userData.password;
-                    return userData;
+                // Fetch users from the API
+                const response = await apiRequest('/api/users', {
+                    method: 'GET'
                 });
 
+                if (response.status !== 'success') {
+                    throw new Error(response.message || 'Failed to fetch users');
+                }
+
+                const usersList = response.data.users || [];
                 setUsers(usersList);
-                setLoading(false);
             } catch (error) {
                 console.error('Error fetching users:', error);
+            } finally {
                 setLoading(false);
             }
         };
 
         fetchUsers();
-    }, []);
+    }, [apiRequest]);
 
     const handleRoleChange = async (userId, newRole) => {
         try {
+            // Use the updateUserRole function from AuthContext
             await updateUserRole(userId, newRole);
 
             // Update the users list with the new role
             setUsers(prevUsers =>
                 prevUsers.map(user =>
-                    user.uid === userId ? { ...user, role: newRole } : user
+                    (user._id === userId || user.id === userId) ? { ...user, role: newRole } : user
                 )
             );
         } catch (error) {
@@ -74,16 +75,25 @@ export default function UsersManagement() {
         if (!selectedUser) return;
 
         try {
-            const userRef = doc(db, 'users', selectedUser.uid);
-            await updateDoc(userRef, {
-                displayName: editForm.displayName,
-                role: editForm.role
+            const userId = selectedUser._id || selectedUser.id;
+
+            // Update the user via API
+            const response = await apiRequest(`/api/users/${userId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    displayName: editForm.displayName,
+                    role: editForm.role
+                })
             });
+
+            if (response.status !== 'success') {
+                throw new Error(response.message || 'Failed to update user');
+            }
 
             // Update local state
             setUsers(prevUsers =>
                 prevUsers.map(user =>
-                    user.uid === selectedUser.uid
+                    (user._id === userId || user.id === userId)
                         ? { ...user, displayName: editForm.displayName, role: editForm.role }
                         : user
                 )
@@ -156,7 +166,7 @@ export default function UsersManagement() {
                         </thead>
                         <tbody className="bg-gray-700 divide-y divide-gray-600">
                             {users.map((user) => (
-                                <tr key={user.uid} className="hover:bg-gray-650">
+                                <tr key={user._id || user.id} className="hover:bg-gray-650">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center">
                                             <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-600 flex items-center justify-center">
@@ -170,7 +180,7 @@ export default function UsersManagement() {
                                                 <div className="text-sm font-medium text-white">
                                                     {user.displayName || 'Unnamed User'}
                                                 </div>
-                                                <div className="text-sm text-gray-400">User ID: {user.uid.substring(0, 8)}...</div>
+                                                <div className="text-sm text-gray-400">User ID: {(user._id || user.id).substring(0, 8)}...</div>
                                             </div>
                                         </div>
                                     </td>
@@ -204,13 +214,13 @@ export default function UsersManagement() {
                                             </button>
                                             <button
                                                 onClick={() => handleRoleChange(
-                                                    user.uid,
+                                                    user._id || user.id,
                                                     user.role === 'admin' ? 'user' : 'admin'
                                                 )}
                                                 className={`${user.role === 'admin' ? 'text-purple-400 hover:text-purple-300' : 'text-gray-400 hover:text-gray-300'
                                                     } p-1`}
                                                 title={user.role === 'admin' ? 'Demote to User' : 'Promote to Admin'}
-                                                disabled={currentUser.uid === user.uid}
+                                                disabled={currentUser.id === (user._id || user.id)}
                                             >
                                                 {user.role === 'admin' ? <User size={16} /> : <ShieldCheck size={16} />}
                                             </button>
@@ -250,12 +260,12 @@ export default function UsersManagement() {
                                     className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     value={editForm.role}
                                     onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                                    disabled={currentUser.uid === selectedUser.uid}
+                                    disabled={currentUser.id === (selectedUser._id || selectedUser.id)}
                                 >
                                     <option value="user">User</option>
                                     <option value="admin">Admin</option>
                                 </select>
-                                {currentUser.uid === selectedUser.uid && (
+                                {currentUser.id === (selectedUser._id || selectedUser.id) && (
                                     <p className="text-yellow-400 text-xs mt-1">You cannot change your own role</p>
                                 )}
                             </div>
