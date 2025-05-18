@@ -1,319 +1,297 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import {
-    collection,
-    addDoc,
-    query,
-    where,
-    getDocs,
-    doc,
-    updateDoc,
-    deleteDoc,
-    setDoc,
-    getDoc
-} from 'firebase/firestore';
-import { db } from '../firebase/config';
-import bcryptjs from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
 import { useRouter } from 'next/navigation';
+import { getApiUrl } from '@/lib/apiConfig';
 
+// Create context
 const AuthContext = createContext({});
 export const useAuth = () => useContext(AuthContext);
-
-const USERS_COLLECTION = 'users';
-const SESSIONS_COLLECTION = 'sessions';
-const SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const route = useRouter();
+    const router = useRouter();
 
+    // Check for existing token on app load
     useEffect(() => {
-        const checkSession = async () => {
+        const checkAuth = async () => {
             try {
-                const sessionId = localStorage.getItem('sessionId');
+                const token = localStorage.getItem('token');
 
-                if (!sessionId) {
+                if (!token) {
                     setLoading(false);
                     return;
                 }
 
-                const sessionRef = doc(db, SESSIONS_COLLECTION, sessionId);
-                const sessionSnap = await getDoc(sessionRef);
+                // Fetch current user with token
+                const response = await fetch(getApiUrl('/api/auth/me'), {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
 
-                if (!sessionSnap.exists()) {
-                    localStorage.removeItem('sessionId');
-                    setLoading(false);
-                    return;
+                if (response.ok) {
+                    const data = await response.json();
+                    setUser(data.data.user);
+                } else {
+                    // Try refreshing token
+                    try {
+                        await refreshToken();
+                        // Fetch user data again with new token
+                        const newToken = localStorage.getItem('token');
+                        const newResponse = await fetch(getApiUrl('/api/auth/me'), {
+                            headers: {
+                                'Authorization': `Bearer ${newToken}`
+                            }
+                        });
+
+                        if (newResponse.ok) {
+                            const data = await newResponse.json();
+                            setUser(data.data.user);
+                        } else {
+                            // Clear tokens if refresh didn't work
+                            localStorage.removeItem('token');
+                            localStorage.removeItem('refreshToken');
+                        }
+                    } catch (err) {
+                        // Handle refresh token error
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('refreshToken');
+                    }
                 }
-
-                const sessionData = sessionSnap.data();
-
-                if (sessionData.expiresAt < Date.now()) {
-                    await deleteDoc(sessionRef);
-                    localStorage.removeItem('sessionId');
-                    setLoading(false);
-                    return;
-                }
-
-                const userRef = doc(db, USERS_COLLECTION, sessionData.userId);
-                const userSnap = await getDoc(userRef);
-
-                if (!userSnap.exists()) {
-                    localStorage.removeItem('sessionId');
-                    setLoading(false);
-                    return;
-                }
-
-                const userData = userSnap.data();
-                delete userData.password;
-
-                setUser(userData);
             } catch (err) {
-                console.error('Error checking session:', err);
-                setError(err.message);
+                console.error('Auth check error:', err);
             } finally {
                 setLoading(false);
             }
         };
 
-        checkSession();
+        checkAuth();
     }, []);
 
-    const createSession = async (userId) => {
-        const sessionId = uuidv4();
-        const sessionData = {
-            sessionId,
-            userId,
-            createdAt: Date.now(),
-            expiresAt: Date.now() + SESSION_EXPIRY,
+    // Token refresh helper
+    const refreshToken = async () => {
+        const refreshToken = localStorage.getItem('refreshToken');
+
+        if (!refreshToken) {
+            throw new Error('No refresh token available');
+        }
+
+        const response = await fetch(getApiUrl('/api/auth/refresh-token'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ refreshToken }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            // If refresh fails, clear tokens
+            localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
+            throw new Error(data.message || 'Failed to refresh token');
+        }
+
+        // Update tokens in localStorage
+        localStorage.setItem('token', data.data.token);
+        if (data.data.refreshToken) {
+            localStorage.setItem('refreshToken', data.data.refreshToken);
+        }
+
+        return data.data;
+    };
+
+    // API request helper with token handling
+    const apiRequest = async (endpoint, options = {}) => {
+        // Set up default headers
+        const token = localStorage.getItem('token');
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
         };
 
-        await setDoc(doc(db, SESSIONS_COLLECTION, sessionId), sessionData);
-        localStorage.setItem('sessionId', sessionId);
-        return sessionId;
-    };
-
-    // Send verification email
-    const sendVerificationEmail = async (userId, email, name = '') => {
-        try {
-            const verificationToken = uuidv4();
-            const expiryTime = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-            // Update user with verification token
-            const userRef = doc(db, USERS_COLLECTION, userId);
-            await updateDoc(userRef, {
-                verificationToken,
-                verificationTokenExpiry: expiryTime
-            });
-
-            // Call the API to send verification email
-            const response = await fetch('/api/verify-email', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email,
-                    name,
-                    userId
-                }),
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to send verification email');
-            }
-
-            return true;
-        } catch (err) {
-            console.error('Error sending verification email:', err);
-            throw err;
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
         }
-    };
 
-    // Verify email with token
-    const verifyEmail = async (token, userId) => {
-        try {
-            const userRef = doc(db, USERS_COLLECTION, userId);
-            const userSnap = await getDoc(userRef);
+        // Make the request
+        let response = await fetch(getApiUrl(endpoint), {
+            ...options,
+            headers
+        });
 
-            if (!userSnap.exists()) {
-                throw new Error('User not found');
-            }
+        // Handle 401 Unauthorized (token expired)
+        if (response.status === 401 && token) {
+            try {
+                // Try to refresh the token
+                await refreshToken();
 
-            const userData = userSnap.data();
+                // Retry the request with the new token
+                const newToken = localStorage.getItem('token');
+                headers['Authorization'] = `Bearer ${newToken}`;
 
-            if (userData.verificationToken !== token) {
-                throw new Error('Invalid verification token');
-            }
-
-            if (!userData.verificationTokenExpiry || userData.verificationTokenExpiry < Date.now()) {
-                throw new Error('Verification token has expired');
-            }
-
-            await updateDoc(userRef, {
-                emailVerified: true,
-                verificationToken: null,
-                verificationTokenExpiry: null
-            });
-
-            // Update user state if this is the current user
-            if (user && user.uid === userId) {
-                setUser({
-                    ...user,
-                    emailVerified: true
+                response = await fetch(getApiUrl(endpoint), {
+                    ...options,
+                    headers
                 });
+            } catch (err) {
+                // If refresh fails, redirect to login
+                localStorage.removeItem('token');
+                localStorage.removeItem('refreshToken');
+                setUser(null);
+                router.push('/auth');
+                throw new Error('Session expired. Please login again.');
             }
-
-            return true;
-        } catch (err) {
-            console.error('Error verifying email:', err);
-            throw err;
         }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Request failed');
+        }
+
+        return data;
     };
 
     // Sign up function
     const signup = async (email, password, name = '') => {
         setError(null);
+        setLoading(true);
+
         try {
-            const usersRef = collection(db, USERS_COLLECTION);
-            const q = query(usersRef, where('email', '==', email));
-            const querySnapshot = await getDocs(q);
-
-            if (!querySnapshot.empty) {
-                throw new Error('Email already in use');
-            }
-
-            const hashedPassword = await bcryptjs.hash(password, 10);
-            const uid = uuidv4();
-            const userData = {
-                uid,
-                email,
-                password: hashedPassword,
-                displayName: name,
-                emailVerified: false,
-                createdAt: Date.now(),
-                role: 'user', // Default role is 'user'
-                subscription: 'free' // Default subscription
-            };
-
-            await setDoc(doc(db, USERS_COLLECTION, uid), userData);
-            await createSession(uid);
-
-            // Send verification email
-            await sendVerificationEmail(uid, email, name);
-
-            const userDataToReturn = { ...userData };
-            delete userDataToReturn.password;
-            setUser(userDataToReturn);
-
-            return userDataToReturn;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        }
-    };
-
-    const login = async (email, password) => {
-        setError(null);
-        try {
-            const usersRef = collection(db, USERS_COLLECTION);
-            const q = query(usersRef, where('email', '==', email));
-            const querySnapshot = await getDocs(q);
-
-            if (querySnapshot.empty) {
-                throw new Error('No user found with this email');
-            }
-
-            const userData = querySnapshot.docs[0].data();
-
-            if (!await bcryptjs.compare(password, userData.password)) {
-                throw new Error('Incorrect password');
-            }
-
-            // Check if the email is verified
-            if (!userData.emailVerified) {
-                throw new Error('email_not_verified');
-            }
-
-            await createSession(userData.uid);
-
-            const userDataToReturn = { ...userData };
-            delete userDataToReturn.password;
-            setUser(userDataToReturn);
-            route.push('/dashboard'); // Redirect to dashboard after login
-            return userDataToReturn;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        }
-    };
-
-    const loginWithoutVerification = async (email, password) => {
-        setError(null);
-        try {
-            const usersRef = collection(db, USERS_COLLECTION);
-            const q = query(usersRef, where('email', '==', email));
-            const querySnapshot = await getDocs(q);
-
-            if (querySnapshot.empty) {
-                throw new Error('No user found with this email');
-            }
-
-            const userData = querySnapshot.docs[0].data();
-
-            if (!await bcryptjs.compare(password, userData.password)) {
-                throw new Error('Incorrect password');
-            }
-
-            // Set user without creating a session
-            const userDataToReturn = { ...userData };
-            delete userDataToReturn.password;
-            setUser(userDataToReturn);
-
-            return userDataToReturn;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        }
-    };
-
-    const loginWithGoogle = async () => {
-        setError('Google sign-in not implemented with custom auth solution');
-        throw new Error('Google sign-in not implemented with custom auth solution');
-    };
-
-    const resetPassword = async (email) => {
-        setError(null);
-        try {
-            const usersRef = collection(db, USERS_COLLECTION);
-            const q = query(usersRef, where('email', '==', email));
-            const querySnapshot = await getDocs(q);
-
-            if (querySnapshot.empty) {
-                throw new Error('No user found with this email');
-            }
-
-            const userData = querySnapshot.docs[0].data();
-            const userId = userData.uid;
-
-            // Generate reset token and expiry
-            const resetToken = uuidv4();
-            const resetTokenExpiry = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-            // Update user with reset token
-            await updateDoc(querySnapshot.docs[0].ref, {
-                resetToken,
-                resetTokenExpiry
+            const response = await fetch(getApiUrl('/api/auth/register'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email, password, name }),
             });
 
-            // Call the API to send reset email
-            const response = await fetch('/api/reset-password', {
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Registration failed');
+            }
+
+            // Store tokens
+            localStorage.setItem('token', data.data.token);
+            localStorage.setItem('refreshToken', data.data.refreshToken);
+
+            setUser(data.data.user);
+            return data.data.user;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Login function
+    const login = async (email, password) => {
+        setError(null);
+        setLoading(true);
+
+        try {
+            const response = await fetch(getApiUrl('/api/auth/login'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email, password }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Authentication failed');
+            }
+
+            // Store tokens
+            localStorage.setItem('token', data.data.token);
+            localStorage.setItem('refreshToken', data.data.refreshToken);
+
+            setUser(data.data.user);
+            router.push('/dashboard'); // Redirect to dashboard after login
+            return data.data.user;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Login without verification (for resending verification email)
+    const loginWithoutVerification = async (email, password) => {
+        setError(null);
+
+        try {
+            // Try to login but catch email_not_verified error
+            const response = await fetch(getApiUrl('/api/auth/login'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email, password }),
+            });
+
+            const data = await response.json();
+
+            // If it's the email_not_verified error, we can proceed
+            if (!response.ok) {
+                if (data.code === 'email_not_verified' && data.data?.user) {
+                    // Set the user without saving the token
+                    setUser(data.data.user);
+                    return data.data.user;
+                }
+
+                throw new Error(data.message || 'Authentication failed');
+            }
+
+            // If we get here, the login succeeded normally
+            localStorage.setItem('token', data.data.token);
+            localStorage.setItem('refreshToken', data.data.refreshToken);
+
+            setUser(data.data.user);
+            return data.data.user;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Logout function
+    const logout = async () => {
+        setError(null);
+
+        try {
+            // No need to call the backend for logout as we're using stateless JWT auth
+            // Just remove the tokens from localStorage
+            localStorage.removeItem('token');
+            localStorage.removeItem('refreshToken');
+
+            // Clear user state
+            setUser(null);
+            router.push('/auth');
+            return true;
+        } catch (err) {
+            console.error('Logout error:', err);
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Password reset request
+    const resetPassword = async (email) => {
+        setError(null);
+
+        try {
+            const response = await fetch(getApiUrl('/api/auth/forgot-password'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -324,7 +302,7 @@ export const AuthProvider = ({ children }) => {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || 'Failed to send reset email');
+                throw new Error(data.message || 'Failed to initiate password reset');
             }
 
             return true;
@@ -334,18 +312,67 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Complete password reset with token
+    const completePasswordReset = async (token, userId, password) => {
+        setError(null);
+
+        try {
+            const response = await fetch(getApiUrl('/api/auth/reset-password'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ token, userId, password }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to reset password');
+            }
+
+            return true;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Update user profile
     const updateUserProfile = async (userData) => {
         setError(null);
+
         try {
             if (!user) {
                 throw new Error('No authenticated user');
             }
 
-            const userRef = doc(db, USERS_COLLECTION, user.uid);
-            delete userData.password;
+            const data = await apiRequest('/api/users/me', {
+                method: 'PATCH',
+                body: JSON.stringify(userData)
+            });
 
-            await updateDoc(userRef, userData);
-            setUser({ ...user, ...userData });
+            setUser({ ...user, ...data.data.user });
+            return data.data.user;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Change password
+    const changePassword = async (currentPassword, newPassword) => {
+        setError(null);
+
+        try {
+            if (!user) {
+                throw new Error('No authenticated user');
+            }
+
+            await apiRequest('/api/users/change-password', {
+                method: 'PATCH',
+                body: JSON.stringify({ currentPassword, newPassword })
+            });
 
             return true;
         } catch (err) {
@@ -357,12 +384,60 @@ export const AuthProvider = ({ children }) => {
     // Request email verification resend
     const resendVerificationEmail = async () => {
         setError(null);
+
         try {
             if (!user) {
                 throw new Error('No authenticated user');
             }
 
-            await sendVerificationEmail(user.uid, user.email, user.displayName || '');
+            const response = await fetch(getApiUrl('/api/auth/resend-verification'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: user.email }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to resend verification email');
+            }
+
+            return true;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        }
+    };
+
+    // Verify email with token
+    const verifyEmail = async (token, userId) => {
+        setError(null);
+
+        try {
+            const response = await fetch(getApiUrl('/api/auth/verify-email'), {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                params: { token, userId }
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to verify email');
+            }
+
+            // Update user state if this is the current user
+            if (user && user.id === userId) {
+                setUser({
+                    ...user,
+                    emailVerified: true
+                });
+            }
+
             return true;
         } catch (err) {
             setError(err.message);
@@ -373,29 +448,6 @@ export const AuthProvider = ({ children }) => {
     // Check if email needs verification
     const checkEmailVerification = () => {
         return user && !user.emailVerified;
-    };
-
-    // Enhanced logout function with proper cleanup
-    const logout = async () => {
-        setError(null);
-        try {
-            const sessionId = localStorage.getItem('sessionId');
-
-            if (sessionId) {
-                // Delete session from Firestore
-                await deleteDoc(doc(db, SESSIONS_COLLECTION, sessionId));
-                // Remove session from localStorage
-                localStorage.removeItem('sessionId');
-            }
-
-            // Clear user state
-            setUser(null);
-            return true;
-        } catch (err) {
-            console.error('Logout error:', err);
-            setError(err.message);
-            throw err;
-        }
     };
 
     // Role-based authorization helpers
@@ -410,6 +462,7 @@ export const AuthProvider = ({ children }) => {
     // Update user role - only admin can change roles
     const updateUserRole = async (userId, newRole) => {
         setError(null);
+
         try {
             if (!user || user.role !== 'admin') {
                 throw new Error('Unauthorized: Only admins can change roles');
@@ -419,8 +472,10 @@ export const AuthProvider = ({ children }) => {
                 throw new Error('Invalid role');
             }
 
-            const userRef = doc(db, USERS_COLLECTION, userId);
-            await updateDoc(userRef, { role: newRole });
+            const data = await apiRequest(`/api/users/${userId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ role: newRole })
+            });
 
             return true;
         } catch (err) {
@@ -436,20 +491,21 @@ export const AuthProvider = ({ children }) => {
             error,
             signup,
             login,
-            loginWithGoogle,
             logout,
             resetPassword,
+            completePasswordReset,
             getCurrentUser: () => user,
             updateUserProfile,
+            changePassword,
             isAuthenticated: () => !!user,
-            sendVerificationEmail,
             verifyEmail,
             resendVerificationEmail,
             checkEmailVerification,
             loginWithoutVerification,
             hasRole,
             isAdmin,
-            updateUserRole
+            updateUserRole,
+            apiRequest, // Expose apiRequest for other components to use
         }}>
             {!loading ? children : <div>Loading...</div>}
         </AuthContext.Provider>
