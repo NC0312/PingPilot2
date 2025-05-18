@@ -557,16 +557,20 @@ export async function GET(req) {
                 const frequency = server.monitoring?.frequency || 5;
                 const minimumCheckInterval = frequency * 60 * 1000;
 
+                // Add a small buffer (10%) to avoid edge cases with timing
+                const adjustedInterval = minimumCheckInterval * 0.9;
+
                 // Log timing information
                 console.log(`Server ${server.name} timing:`, {
                     lastChecked: lastChecked ? lastChecked.toISOString() : 'Never',
                     millisecondsSinceLastCheck,
                     minimumCheckInterval,
+                    adjustedInterval,
                     frequencyMinutes: frequency
                 });
 
-                // Skip if checked recently
-                if (lastChecked && millisecondsSinceLastCheck < minimumCheckInterval) {
+                // Skip if checked recently, using adjusted interval
+                if (lastChecked && millisecondsSinceLastCheck < adjustedInterval) {
                     const minutesSinceLastCheck = (millisecondsSinceLastCheck / (1000 * 60)).toFixed(2);
                     console.log(`Skipping check for ${server.name}: last checked ${millisecondsSinceLastCheck} ms (${minutesSinceLastCheck} minutes) ago (frequency: ${frequency} minutes)`);
                     return { action: 'skipped', server };
