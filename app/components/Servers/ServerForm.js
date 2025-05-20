@@ -4,6 +4,43 @@ import React, { useState } from 'react';
 import { AlertTriangle, Globe, Server as ServerIcon, HardDrive, Database, Info, Clock } from 'lucide-react';
 import moment from 'moment-timezone';
 
+const getSortedTimezones = () => {
+    const timezoneGroups = {};
+
+    // Group timezones by region
+    moment.tz.names().forEach(name => {
+        const parts = name.split('/');
+        const region = parts[0];
+        if (!timezoneGroups[region]) {
+            timezoneGroups[region] = [];
+        }
+        timezoneGroups[region].push({
+            name: name,
+            offset: moment().tz(name).format('Z')
+        });
+    });
+
+    // Sort each group by offset
+    Object.keys(timezoneGroups).forEach(region => {
+        timezoneGroups[region].sort((a, b) => {
+            // First sort by offset numerically
+            const offsetA = parseInt(a.offset.replace(':', ''));
+            const offsetB = parseInt(b.offset.replace(':', ''));
+
+            if (offsetA !== offsetB) {
+                return offsetA - offsetB;
+            }
+
+            // If offset is the same, sort alphabetically
+            return a.name.localeCompare(b.name);
+        });
+    });
+
+    return timezoneGroups;
+};
+
+const sortedTimezones = getSortedTimezones();
+
 // Component for displaying plan limits info
 const PlanLimitInfo = ({ userPlan, serverCount, maxServers }) => {
     if (userPlan === 'free') {
@@ -45,7 +82,7 @@ const PlanLimitInfo = ({ userPlan, serverCount, maxServers }) => {
     }
 };
 
-export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, maxServers }) => {
+export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, maxServers, initialData = {} }) => {
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         url: initialData?.url || '',
@@ -214,11 +251,11 @@ export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, ma
                             disabled={isFormDisabled || loading}
                             className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
                         >
-                            {Object.keys(timezoneGroups).sort().map(region => (
+                            {Object.keys(sortedTimezones).sort().map(region => (
                                 <optgroup key={region} label={region}>
-                                    {timezoneGroups[region].sort().map(tz => (
-                                        <option key={tz} value={tz}>
-                                            {tz} ({moment().tz(tz).format('Z')})
+                                    {sortedTimezones[region].map(tz => (
+                                        <option key={tz.name} value={tz.name}>
+                                            {tz.name} ({tz.offset})
                                         </option>
                                     ))}
                                 </optgroup>
@@ -229,7 +266,7 @@ export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, ma
                         All monitoring times and reports will use this timezone
                     </p>
                 </div>
-                
+
                 <div className="mb-4">
                     <label className="block mb-2 text-sm font-medium text-gray-300">
                         Server Type

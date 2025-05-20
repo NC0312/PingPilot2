@@ -19,6 +19,7 @@ import { useAuth } from '@/app/context/AuthContext';
 import { getApiUrl } from '@/lib/apiConfig';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import moment from 'moment-timezone';
+import { formatTimestamp, formatDuration, formatRelativeTime } from '@/app/components/dateTimeUtils';
 
 export default function ServersPage() {
     const [servers, setServers] = useState([]);
@@ -165,12 +166,17 @@ export default function ServersPage() {
         fetchServerHistory(server._id || server.id);
     };
 
-    // Format a timestamp into a readable format
-    const formatTimestamp = (timestamp, timezone) => {
-        if (!timestamp) return 'Never';
-
-        return moment(timestamp).tz(timezone || 'Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
+    const displayTimeAgo = (timestamp, server) => {
+        const timezone = server?.timezone || 'Asia/Kolkata';
+        return formatRelativeTime(timestamp, timezone);
     };
+
+    // Format a timestamp into a readable format
+    const displayTimestamp = (timestamp, server) => {
+        const timezone = server?.timezone || 'Asia/Kolkata';
+        return formatTimestamp(timestamp, timezone);
+    };
+
 
     // Calculate uptime percentage from historical data
     const calculateUptime = (periodHours) => {
@@ -280,11 +286,13 @@ export default function ServersPage() {
         return null;
     };
 
+    const getTimezone = (server) => server?.timezone || 'Asia/Kolkata';
+
     // Format chart data for display
     const formatChartData = (data) => {
         return data.map(item => ({
             ...item,
-            time: new Date(item.time).toLocaleTimeString(),
+            time: formatTimestamp(item.time, getTimezone(selectedServer), 'HH:mm:ss'),
         }));
     };
 
