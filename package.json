@@ -15,6 +15,7 @@
     "firebase": "^11.7.1",
     "framer-motion": "^12.11.0",
     "lucide-react": "^0.509.0",
+    "moment-timezone": "^0.5.48",
     "next": "15.3.2",
     "node-cron": "^4.0.5",
     "node-fetch": "^3.3.2",

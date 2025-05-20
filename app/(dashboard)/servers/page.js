@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
 import { getApiUrl } from '@/lib/apiConfig';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import moment from 'moment-timezone';
 
 export default function ServersPage() {
     const [servers, setServers] = useState([]);
@@ -37,7 +38,7 @@ export default function ServersPage() {
 
         try {
             setLoading(true);
-            
+
             // Make API request to get servers
             const response = await apiRequest('/api/servers', {
                 method: 'GET'
@@ -45,7 +46,7 @@ export default function ServersPage() {
 
             if (response.status === 'success' && response.data.servers) {
                 const serversList = response.data.servers;
-                
+
                 setServers(serversList);
 
                 // If we have servers, select the first one by default
@@ -74,7 +75,7 @@ export default function ServersPage() {
     useEffect(() => {
         if (user) {
             fetchServers();
-            
+
             // Set up refresh interval - every 60 seconds
             const intervalId = setInterval(() => {
                 fetchServers();
@@ -135,8 +136,8 @@ export default function ServersPage() {
                 }));
 
                 // Update the server in the servers list
-                setServers(prev => prev.map(server => 
-                    (server._id === serverId || server.id === serverId) 
+                setServers(prev => prev.map(server =>
+                    (server._id === serverId || server.id === serverId)
                         ? {
                             ...server,
                             status: response.data.status,
@@ -165,11 +166,10 @@ export default function ServersPage() {
     };
 
     // Format a timestamp into a readable format
-    const formatTimestamp = (timestamp) => {
+    const formatTimestamp = (timestamp, timezone) => {
         if (!timestamp) return 'Never';
 
-        const date = new Date(timestamp);
-        return date.toLocaleString();
+        return moment(timestamp).tz(timezone || 'Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss');
     };
 
     // Calculate uptime percentage from historical data

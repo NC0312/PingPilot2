@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AlertTriangle, Globe, Server as ServerIcon, HardDrive, Database, Info } from 'lucide-react';
+import { AlertTriangle, Globe, Server as ServerIcon, HardDrive, Database, Info, Clock } from 'lucide-react';
+import moment from 'moment-timezone';
 
 // Component for displaying plan limits info
 const PlanLimitInfo = ({ userPlan, serverCount, maxServers }) => {
@@ -46,10 +47,21 @@ const PlanLimitInfo = ({ userPlan, serverCount, maxServers }) => {
 
 export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, maxServers }) => {
     const [formData, setFormData] = useState({
-        name: '',
-        url: '',
-        type: 'website',
-        description: ''
+        name: initialData?.name || '',
+        url: initialData?.url || '',
+        type: initialData?.type || 'website',
+        description: initialData?.description || '',
+        timezone: initialData?.timezone || 'Asia/Kolkata' // Default to Indian timezone
+    });
+
+    const timezoneGroups = {};
+    moment.tz.names().forEach(name => {
+        const parts = name.split('/');
+        const region = parts[0];
+        if (!timezoneGroups[region]) {
+            timezoneGroups[region] = [];
+        }
+        timezoneGroups[region].push(name);
     });
 
     const [validationErrors, setValidationErrors] = useState({});
@@ -188,6 +200,36 @@ export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, ma
                     )}
                 </div>
 
+                <div className="mb-4">
+                    <label htmlFor="timezone" className="block mb-2 text-sm font-medium text-gray-300">
+                        Server Timezone
+                    </label>
+                    <div className="flex items-center">
+                        <Clock size={20} className="text-gray-400 mr-2" />
+                        <select
+                            id="timezone"
+                            name="timezone"
+                            value={formData.timezone}
+                            onChange={handleChange}
+                            disabled={isFormDisabled || loading}
+                            className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                        >
+                            {Object.keys(timezoneGroups).sort().map(region => (
+                                <optgroup key={region} label={region}>
+                                    {timezoneGroups[region].sort().map(tz => (
+                                        <option key={tz} value={tz}>
+                                            {tz} ({moment().tz(tz).format('Z')})
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            ))}
+                        </select>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">
+                        All monitoring times and reports will use this timezone
+                    </p>
+                </div>
+                
                 <div className="mb-4">
                     <label className="block mb-2 text-sm font-medium text-gray-300">
                         Server Type
