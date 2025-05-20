@@ -73,7 +73,7 @@ export default function ResetPasswordPage() {
             }
 
             // Make API request to reset password
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/reset-password`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://ping-pilott-backend.onrender.com'}/api/auth/reset-password`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
