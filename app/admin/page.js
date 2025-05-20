@@ -6,7 +6,7 @@ import Link from 'next/link';
 import axios from 'axios';
 
 // Set the base URL for API requests
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://ping-pilott-backend.onrender.com/api';
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState({
