@@ -1,4 +1,3 @@
-// app/auth/forgot-password/page.js
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -16,12 +15,12 @@ export default function ForgotPasswordPage() {
     const [success, setSuccess] = useState(false);
 
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, resetPassword } = useAuth();
 
     // Redirect if already logged in
     useEffect(() => {
         if (user) {
-            router.push('/');
+            router.push('/dashboard');
         }
     }, [user, router]);
 
@@ -39,25 +38,14 @@ export default function ForgotPasswordPage() {
         setSuccess(false);
 
         try {
-            // Call the password reset API
-            const response = await fetch('/api/reset-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email: data.email }),
-            });
+            // Use the resetPassword function from AuthContext
+            await resetPassword(data.email);
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || 'Failed to process password reset');
-            }
-
+            // If no error was thrown, show success message
             setSuccess(true);
         } catch (err) {
             console.error('Password reset error:', err);
-            setError(err.message);
+            setError(err.message || 'Failed to process password reset');
         } finally {
             setLoading(false);
         }

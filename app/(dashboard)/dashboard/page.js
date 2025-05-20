@@ -18,9 +18,8 @@ import {
   Settings
 } from 'lucide-react';
 import Link from 'next/link';
-import { collection, query, getDocs, orderBy, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '@/app/firebase/config';
 import { useAuth } from '@/app/context/AuthContext';
+import { getApiUrl } from '@/lib/apiConfig';
 
 export default function AdminServersPage() {
   const [servers, setServers] = useState([]);
@@ -29,12 +28,12 @@ export default function AdminServersPage() {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortConfig, setSortConfig] = useState({ key: 'uploadedAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'updatedAt', direction: 'desc' });
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [userMap, setUserMap] = useState({});
 
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, apiRequest } = useAuth();
 
   const fetchServers = async () => {
     if (!user) return;
@@ -43,45 +42,43 @@ export default function AdminServersPage() {
     setError(null);
 
     try {
-      const serversRef = collection(db, 'servers');
-      let q;
+      // Determine query parameters
+      let endpoint = '/api/servers';
 
-      // Admin sees all servers, regular users only see their own
+      // Add admin=true parameter if user is admin to get all servers
       if (isAdmin()) {
-        q = query(serversRef, orderBy('uploadedAt', 'desc'));
-      } else {
-        q = query(serversRef, where('uploadedBy', '==', user.uid), orderBy('uploadedAt', 'desc'));
+        endpoint += '?admin=true';
       }
 
-      const querySnapshot = await getDocs(q);
-      const serversList = [];
-
-      querySnapshot.forEach((doc) => {
-        serversList.push({
-          id: doc.id,
-          ...doc.data()
-        });
+      // Make the API request
+      const response = await apiRequest(endpoint, {
+        method: 'GET'
       });
 
-      // For admin view, build a map of user IDs to display names
-      if (isAdmin()) {
+      const serversList = response.data.servers;
+
+      // For admin view, we need user information
+      if (isAdmin() && serversList.length > 0) {
         const userIds = [...new Set(serversList.map(server => server.uploadedBy))];
         const usersMap = {};
 
-        for (const userId of userIds) {
-          if (userId) {
-            // Get user data from Firestore
-            const usersRef = collection(db, 'users');
-            const userQuery = query(usersRef, where('uid', '==', userId));
-            const userSnapshot = await getDocs(userQuery);
+        // Get user info for each user ID
+        try {
+          const usersResponse = await apiRequest('/api/users', {
+            method: 'GET'
+          });
 
-            if (!userSnapshot.empty) {
-              const userData = userSnapshot.docs[0].data();
-              usersMap[userId] = userData.displayName || userData.email || 'Unknown User';
-            } else {
-              usersMap[userId] = 'Unknown User';
-            }
+          // Create a map of user IDs to display names
+          if (usersResponse.data && usersResponse.data.users) {
+            usersResponse.data.users.forEach(userData => {
+              if (userData.id) {
+                usersMap[userData.id] = userData.displayName || userData.email || 'Unknown User';
+              }
+            });
           }
+        } catch (userErr) {
+          console.error('Error fetching user details:', userErr);
+          // Continue with servers even if user details fail
         }
 
         setUserMap(usersMap);
@@ -100,14 +97,16 @@ export default function AdminServersPage() {
   };
 
   useEffect(() => {
-    fetchServers();
-
-    // Set up refresh interval - every 60 seconds
-    const intervalId = setInterval(() => {
+    if (user) {
       fetchServers();
-    }, 60 * 1000);
 
-    return () => clearInterval(intervalId);
+      // Set up refresh interval - every 60 seconds
+      const intervalId = setInterval(() => {
+        fetchServers();
+      }, 60 * 1000);
+
+      return () => clearInterval(intervalId);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -137,15 +136,15 @@ export default function AdminServersPage() {
     // Apply sorting
     if (sortConfig.key) {
       result.sort((a, b) => {
-        // Handle nested properties like lastChecked
+        // Handle nested properties
         let aValue, bValue;
 
         if (sortConfig.key === 'lastChecked') {
           aValue = a.lastChecked ? new Date(a.lastChecked).getTime() : 0;
           bValue = b.lastChecked ? new Date(b.lastChecked).getTime() : 0;
-        } else if (sortConfig.key === 'uploadedAt') {
-          aValue = a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
-          bValue = b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
+        } else if (sortConfig.key === 'updatedAt') {
+          aValue = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          bValue = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
         } else if (sortConfig.key === 'uploadedBy' && isAdmin()) {
           aValue = userMap[a.uploadedBy] || '';
           bValue = userMap[b.uploadedBy] || '';
@@ -185,49 +184,39 @@ export default function AdminServersPage() {
 
   const handleCheckServer = async (serverId) => {
     try {
-      const response = await fetch(`/api/servers/${serverId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid
-        },
-        body: JSON.stringify({ action: 'check' })
+      const response = await apiRequest(`/api/servers/${serverId}/check`, {
+        method: 'POST'
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to check server');
-      }
+      if (response.status === 'success') {
+        // Update the server in the list
+        setServers(prev =>
+          prev.map(server =>
+            server._id === serverId || server.id === serverId
+              ? {
+                ...server,
+                status: response.data.status,
+                responseTime: response.data.responseTime,
+                error: response.data.error,
+                lastChecked: response.data.lastChecked
+              }
+              : server
+          )
+        );
 
-      const result = await response.json();
-
-      // Update the server in the list
-      setServers(prev =>
-        prev.map(server =>
-          server.id === serverId
+        // Also update filtered servers
+        applyFilters(servers.map(server =>
+          server._id === serverId || server.id === serverId
             ? {
               ...server,
-              status: result.result.status,
-              responseTime: result.result.responseTime,
-              error: result.result.error,
-              lastChecked: result.result.lastChecked
+              status: response.data.status,
+              responseTime: response.data.responseTime,
+              error: response.data.error,
+              lastChecked: response.data.lastChecked
             }
             : server
-        )
-      );
-
-      // Also update filtered servers
-      applyFilters(servers.map(server =>
-        server.id === serverId
-          ? {
-            ...server,
-            status: result.result.status,
-            responseTime: result.result.responseTime,
-            error: result.result.error,
-            lastChecked: result.result.lastChecked
-          }
-          : server
-      ));
-
+        ));
+      }
     } catch (error) {
       console.error('Error checking server:', error);
     }
@@ -237,21 +226,13 @@ export default function AdminServersPage() {
     if (!serverId) return;
 
     try {
-      const response = await fetch(`/api/servers/${serverId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user.uid
-        }
+      await apiRequest(`/api/servers/${serverId}`, {
+        method: 'DELETE'
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete server');
-      }
-
       // Remove the server from the lists
-      setServers(prev => prev.filter(server => server.id !== serverId));
-      setFilteredServers(prev => prev.filter(server => server.id !== serverId));
+      setServers(prev => prev.filter(server => (server._id !== serverId && server.id !== serverId)));
+      setFilteredServers(prev => prev.filter(server => (server._id !== serverId && server.id !== serverId)));
       setConfirmDelete(null);
 
     } catch (error) {
@@ -263,16 +244,7 @@ export default function AdminServersPage() {
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return 'Never';
 
-    let date;
-    if (typeof timestamp === 'string') {
-      date = new Date(timestamp);
-    } else if (timestamp.seconds) {
-      // Firestore timestamp
-      date = new Date(timestamp.seconds * 1000);
-    } else {
-      date = new Date(timestamp);
-    }
-
+    const date = new Date(timestamp);
     return date.toLocaleString();
   };
 
@@ -319,9 +291,6 @@ export default function AdminServersPage() {
             >
               <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
             </button>
-            {/* <button className="bg-gray-700 hover:bg-gray-600 p-2 rounded">
-              <Settings size={20} />
-            </button> */}
           </div>
         </div>
 
@@ -448,7 +417,7 @@ export default function AdminServersPage() {
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
                   {filteredServers.map((server) => (
-                    <tr key={server.id} className="hover:bg-gray-700">
+                    <tr key={server._id || server.id} className="hover:bg-gray-700">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <Server className="text-gray-400 mr-2" size={18} />
@@ -497,22 +466,22 @@ export default function AdminServersPage() {
                       )}
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
-                          onClick={() => handleCheckServer(server.id)}
+                          onClick={() => handleCheckServer(server._id || server.id)}
                           className="text-blue-400 hover:text-blue-300 mr-3"
                           title="Check Now"
                         >
                           Check
                         </button>
                         <Link
-                          href={`/servers/${server.id}/settings`}
+                          href={`/servers/${server._id || server.id}/settings`}
                           className="text-blue-400 hover:text-blue-300 mr-3"
                         >
                           Details
                         </Link>
-                        {confirmDelete === server.id ? (
+                        {confirmDelete === (server._id || server.id) ? (
                           <>
                             <button
-                              onClick={() => handleDeleteServer(server.id)}
+                              onClick={() => handleDeleteServer(server._id || server.id)}
                               className="text-red-500 hover:text-red-400 mr-1"
                             >
                               Confirm
@@ -526,7 +495,7 @@ export default function AdminServersPage() {
                           </>
                         ) : (
                           <button
-                            onClick={() => setConfirmDelete(server.id)}
+                            onClick={() => setConfirmDelete(server._id || server.id)}
                             className="text-red-400 hover:text-red-300"
                           >
                             Delete

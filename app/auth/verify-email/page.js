@@ -1,4 +1,3 @@
-// Debug version of app/auth/verify-email/page.js
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -6,21 +5,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Server, AlertTriangle, Check, MailCheck, RefreshCw, LogIn } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Link from 'next/link';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
-
-const USERS_COLLECTION = 'users';
+import { getApiUrl } from '@/lib/apiConfig';
 
 export default function VerifyEmailPage() {
     const [loading, setLoading] = useState(true);
     const [verifying, setVerifying] = useState(false);
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
-    const [debugInfo, setDebugInfo] = useState({});
 
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user, resendVerificationEmail } = useAuth();
+    const { user, verifyEmail, resendVerificationEmail } = useAuth();
 
     // Get token and userId from URL params
     const token = searchParams.get('token');
@@ -39,7 +34,7 @@ export default function VerifyEmailPage() {
 
     // Verify email token on page load
     useEffect(() => {
-        const verifyEmail = async () => {
+        const verifyEmailToken = async () => {
             if (isSuccess) return; // Skip verification if success is in URL
 
             setLoading(true);
@@ -50,65 +45,13 @@ export default function VerifyEmailPage() {
                 return;
             }
 
-
             try {
-                // Get user data
-                const userRef = doc(db, USERS_COLLECTION, userId);
-                const userSnap = await getDoc(userRef);
-
-                if (!userSnap.exists()) {
-                    console.error("User document not found in Firestore");
-                    setError('User not found. Please check your verification link.');
-                    setLoading(false);
-                    return;
-                }
-
-                const userData = userSnap.data();
-
-                // Check if token matches
-                // Try both property names to debug which one might be used
-                if (userData.verificationToken !== token && userData.token !== token) {
-                    console.error("Token mismatch. URL token:", token);
-                    console.error("DB verification token:", userData.verificationToken);
-                    console.error("DB token:", userData.token);
-                    setError('Invalid verification token. Please request a new verification email.');
-                    setLoading(false);
-                    return;
-                }
-
-                // Check token property that matched
-                const matchedTokenProperty = userData.verificationToken === token
-                    ? 'verificationToken'
-                    : userData.token === token ? 'token' : null;
-
-
-                // Check if token is expired
-                const tokenExpiry = userData.verificationTokenExpiry;
-                if (!tokenExpiry) {
-                    console.error("No token expiry found");
-                    setError('Invalid verification setup. Please request a new verification email.');
-                    setLoading(false);
-                    return;
-                }
-
-                if (tokenExpiry < Date.now()) {
-                    console.error("Token expired");
-                    setError('Verification link has expired. Please request a new verification email.');
-                    setLoading(false);
-                    return;
-                }
-
-                // Update user as verified
-                await updateDoc(userRef, {
-                    emailVerified: true,
-                    verificationToken: null,
-                    token: null, // Clear both possible properties
-                    verificationTokenExpiry: null
-                });
-
+                console.log('Attempting to verify email with:', { token, userId });
+                // Use the verifyEmail function from AuthContext
+                await verifyEmail(token, userId);
                 setSuccess(true);
             } catch (err) {
-                console.error('Email verification error:', err);
+                console.error('Email verification error details:', err);
                 setError('Failed to verify email. The link may have expired or is invalid.');
             } finally {
                 setLoading(false);
@@ -116,11 +59,11 @@ export default function VerifyEmailPage() {
         };
 
         if ((token && userId) && !isSuccess) {
-            verifyEmail();
+            verifyEmailToken();
         } else if (!isSuccess) {
             setLoading(false);
         }
-    }, [token, userId, isSuccess]);
+    }, [token, userId, isSuccess, verifyEmail]);
 
     // Function to resend verification email
     const handleResendVerification = async () => {

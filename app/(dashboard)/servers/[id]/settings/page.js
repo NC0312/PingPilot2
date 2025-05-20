@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/app/firebase/config';
 import { useAuth } from '@/app/context/AuthContext';
 import { ServerForm } from '@/app/components/Servers/ServerForm';
 import { MonitoringForm } from '@/app/components/Servers/MonitoringForm';
@@ -23,7 +21,7 @@ export default function ServerSettingsPage() {
     const router = useRouter();
     const params = useParams();
     const serverId = params.id;
-    const { user } = useAuth();
+    const { user, apiRequest } = useAuth();
 
     useEffect(() => {
         const fetchServer = async () => {
@@ -31,20 +29,20 @@ export default function ServerSettingsPage() {
 
             try {
                 setLoading(true);
-                const serverRef = doc(db, 'servers', serverId);
-                const serverSnap = await getDoc(serverRef);
 
-                if (!serverSnap.exists()) {
+                // Fetch server from API
+                const response = await apiRequest(`/api/servers/${serverId}`, {
+                    method: 'GET'
+                });
+
+                if (response.status !== 'success' || !response.data.server) {
                     throw new Error('Server not found');
                 }
 
-                const serverData = {
-                    id: serverId,
-                    ...serverSnap.data()
-                };
+                const serverData = response.data.server;
 
                 // Check if user is authorized to access this server
-                if (serverData.uploadedBy !== user.uid && user.role !== 'admin') {
+                if (serverData.uploadedBy !== user.id && user.role !== 'admin') {
                     router.push('/servers');
                     return;
                 }
@@ -59,7 +57,7 @@ export default function ServerSettingsPage() {
         };
 
         fetchServer();
-    }, [serverId, user, router]);
+    }, [serverId, user, router, apiRequest]);
 
     const handleServerUpdate = async (updatedData) => {
         if (!server) return;
@@ -78,18 +76,13 @@ export default function ServerSettingsPage() {
             };
 
             // Call API to update server
-            const response = await fetch(`/api/servers/${serverId}`, {
+            const response = await apiRequest(`/api/servers/${serverId}`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-id': user.uid
-                },
                 body: JSON.stringify(data)
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to update server');
+            if (response.status !== 'success') {
+                throw new Error(response.message || 'Failed to update server');
             }
 
             // Update local state
@@ -142,18 +135,13 @@ export default function ServerSettingsPage() {
             };
 
             // Call API to update server
-            const response = await fetch(`/api/servers/${serverId}`, {
+            const response = await apiRequest(`/api/servers/${serverId}`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-id': user.uid
-                },
                 body: JSON.stringify(data)
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to update monitoring settings');
+            if (response.status !== 'success') {
+                throw new Error(response.message || 'Failed to update monitoring settings');
             }
 
             // Update local state
@@ -179,17 +167,12 @@ export default function ServerSettingsPage() {
             setError(null);
 
             // Call API to delete server
-            const response = await fetch(`/api/servers/${serverId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-id': user.uid
-                }
+            const response = await apiRequest(`/api/servers/${serverId}`, {
+                method: 'DELETE'
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to delete server');
+            if (response.status !== 'success') {
+                throw new Error(response.message || 'Failed to delete server');
             }
 
             router.push('/servers');
@@ -281,9 +264,9 @@ export default function ServerSettingsPage() {
                 <div className="flex items-center">
                     <h1 className="text-2xl font-bold">Server Settings</h1>
                 </div>
-                <Link href={`/dashboard`} className="flex items-center text-blue-400 hover:text-blue-300">
+                <Link href={`/servers`} className="flex items-center text-blue-400 hover:text-blue-300">
                     <ArrowLeft size={16} className="mr-1" />
-                    Back to Dashboard
+                    Back to Servers
                 </Link>
             </div>
 
@@ -301,7 +284,7 @@ export default function ServerSettingsPage() {
                     </div>
                     <div className="text-sm text-gray-400 flex items-center">
                         <Calendar size={14} className="mr-1" />
-                        Added: {formatDate(server?.uploadedAt)}
+                        Added: {formatDate(server?.uploadedAt || server?.createdAt)}
                     </div>
                 </div>
             </div>
@@ -326,8 +309,8 @@ export default function ServerSettingsPage() {
             <div className="flex border-b border-gray-700 mb-6">
                 <button
                     className={`py-3 px-4 font-medium text-sm ${activeTab === 'general'
-                            ? 'text-blue-400 border-b-2 border-blue-400'
-                            : 'text-gray-400 hover:text-gray-300'
+                        ? 'text-blue-400 border-b-2 border-blue-400'
+                        : 'text-gray-400 hover:text-gray-300'
                         }`}
                     onClick={() => setActiveTab('general')}
                 >
@@ -335,8 +318,8 @@ export default function ServerSettingsPage() {
                 </button>
                 <button
                     className={`py-3 px-4 font-medium text-sm ${activeTab === 'monitoring'
-                            ? 'text-blue-400 border-b-2 border-blue-400'
-                            : 'text-gray-400 hover:text-gray-300'
+                        ? 'text-blue-400 border-b-2 border-blue-400'
+                        : 'text-gray-400 hover:text-gray-300'
                         }`}
                     onClick={() => setActiveTab('monitoring')}
                 >
@@ -344,8 +327,8 @@ export default function ServerSettingsPage() {
                 </button>
                 <button
                     className={`py-3 px-4 font-medium text-sm ${activeTab === 'danger'
-                            ? 'text-red-400 border-b-2 border-red-400'
-                            : 'text-gray-400 hover:text-gray-300'
+                        ? 'text-red-400 border-b-2 border-red-400'
+                        : 'text-gray-400 hover:text-gray-300'
                         }`}
                     onClick={() => setActiveTab('danger')}
                 >
@@ -432,8 +415,8 @@ export default function ServerSettingsPage() {
                                 onClick={handleDeleteServer}
                                 disabled={deleteInput !== server?.name || saving}
                                 className={`${deleteInput === server?.name && !saving
-                                        ? 'bg-red-600 hover:bg-red-700'
-                                        : 'bg-red-800 cursor-not-allowed'
+                                    ? 'bg-red-600 hover:bg-red-700'
+                                    : 'bg-red-800 cursor-not-allowed'
                                     } text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center`}
                             >
                                 {saving ? (

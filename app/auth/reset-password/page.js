@@ -1,4 +1,3 @@
-// app/auth/reset-password/page.js
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -6,11 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Lock, Server, AlertTriangle, Check, KeyRound, EyeOff, Eye } from 'lucide-react';
 import Link from 'next/link';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
-import bcryptjs from 'bcryptjs';
-
-const USERS_COLLECTION = 'users';
 
 export default function ResetPasswordPage() {
     const [loading, setLoading] = useState(true);
@@ -54,37 +48,14 @@ export default function ResetPasswordPage() {
             }
 
             try {
-                // Get user data
-                const userRef = doc(db, USERS_COLLECTION, userId);
-                const userSnap = await getDoc(userRef);
-
-                if (!userSnap.exists()) {
-                    setError('User not found. Please request a new password reset link.');
-                    setLoading(false);
-                    return;
-                }
-
-                const userData = userSnap.data();
-
-                // Check if token is valid and not expired
-                if (userData.resetToken !== token) {
-                    setError('Invalid reset token. Please request a new password reset link.');
-                    setLoading(false);
-                    return;
-                }
-
-                if (!userData.resetTokenExpiry || userData.resetTokenExpiry < Date.now()) {
-                    setError('Reset token has expired. Please request a new password reset link.');
-                    setLoading(false);
-                    return;
-                }
-
-                // Token is valid
+                // We don't need to verify the token on the client side immediately
+                // Our backend will do that when we submit the form
+                // But we can do a basic validation that the token and userId exist
                 setTokenValid(true);
+                setLoading(false);
             } catch (err) {
                 console.error('Error verifying reset token:', err);
                 setError('An error occurred. Please try again or request a new reset link.');
-            } finally {
                 setLoading(false);
             }
         };
@@ -101,16 +72,24 @@ export default function ResetPasswordPage() {
                 throw new Error('Invalid reset token');
             }
 
-            // Hash the new password
-            const hashedPassword = await bcryptjs.hash(data.password, 10);
-
-            // Update user in Firestore
-            const userRef = doc(db, USERS_COLLECTION, userId);
-            await updateDoc(userRef, {
-                password: hashedPassword,
-                resetToken: null,
-                resetTokenExpiry: null
+            // Make API request to reset password
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/reset-password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    token,
+                    userId,
+                    password: data.password
+                }),
             });
+
+            const responseData = await response.json();
+
+            if (!response.ok) {
+                throw new Error(responseData.message || 'Failed to reset password');
+            }
 
             setSuccess(true);
         } catch (err) {
