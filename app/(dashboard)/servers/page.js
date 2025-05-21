@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
-import { getApiUrl } from '@/lib/apiConfig';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import moment from 'moment-timezone';
 import { formatTimestamp, formatDuration, formatRelativeTime } from '@/app/components/dateTimeUtils';
@@ -96,14 +95,52 @@ export default function ServersPage() {
 
             if (response.status === 'success' && response.data.history) {
                 // Transform data for chart and processing
-                const historicalData = response.data.history.map(check => {
+                let historicalData = response.data.history.map(check => {
                     const date = new Date(check.timestamp);
                     return {
-                        time: date, // Store as Date object for easier filtering
+                        time: date,
                         avgTime: check.responseTime || 0,
-                        status: check.status || 'unknown'
+                        status: check.status || 'unknown',
+                        // Save original date components for filtering
+                        day: date.getDay(), // 0-6 (Sun-Sat)
+                        hour: date.getHours(),
+                        minute: date.getMinutes()
                     };
                 }).sort((a, b) => a.time - b.time); // Sort chronologically
+
+                // If we have a selected server with monitoring settings, filter the data
+                if (selectedServer && selectedServer.monitoring) {
+                    // Filter by days of week if specified
+                    if (selectedServer.monitoring.daysOfWeek && selectedServer.monitoring.daysOfWeek.length > 0) {
+                        historicalData = historicalData.filter(item =>
+                            selectedServer.monitoring.daysOfWeek.includes(item.day)
+                        );
+                    }
+
+                    // Filter by time range if specified
+                    if (selectedServer.monitoring.timeWindows && selectedServer.monitoring.timeWindows.length > 0) {
+                        // Handle the special case of 24/7 monitoring (00:00 to 00:00)
+                        const has24x7Window = selectedServer.monitoring.timeWindows.some(window =>
+                            window.start === "00:00" && window.end === "00:00");
+
+                        if (!has24x7Window) {
+                            historicalData = historicalData.filter(item => {
+                                // For each data point, check if it falls within any of the time windows
+                                return selectedServer.monitoring.timeWindows.some(window => {
+                                    // Convert HH:MM to minutes for easier comparison
+                                    const [startHour, startMinute] = window.start.split(':').map(Number);
+                                    const [endHour, endMinute] = window.end.split(':').map(Number);
+
+                                    const startMinutes = startHour * 60 + startMinute;
+                                    const endMinutes = endHour * 60 + endMinute;
+                                    const itemMinutes = item.hour * 60 + item.minute;
+
+                                    return itemMinutes >= startMinutes && itemMinutes <= endMinutes;
+                                });
+                            });
+                        }
+                    }
+                }
 
                 setResponseTimeData(historicalData);
             }
@@ -268,14 +305,33 @@ export default function ServersPage() {
     };
 
     // Custom tooltip for the response time chart
-    const CustomTooltip = ({ active, payload, label }) => {
+    const CustomTooltip = ({ active, payload }) => {
         if (active && payload && payload.length) {
-            // Get the status from the payload data
-            const status = payload[0]?.payload?.status || 'unknown';
+            // Get the data point from the payload
+            const dataPoint = payload[0]?.payload;
+            const status = dataPoint?.status || 'unknown';
+
+            // Use the correct timezone
+            const timezone = selectedServer?.timezone || 'Asia/Kolkata';
+
+            // Format the time using the original Date object
+            let formattedTime;
+            if (dataPoint && dataPoint.time instanceof Date) {
+                formattedTime = moment(dataPoint.time).tz(timezone).format('YYYY-MM-DD HH:mm:ss');
+            } else if (dataPoint && typeof dataPoint.time === 'string' && dataPoint.time.includes('-')) {
+                // Try to parse the date if it's a string
+                formattedTime = moment(dataPoint.time).tz(timezone).format('YYYY-MM-DD HH:mm:ss');
+            } else if (dataPoint && dataPoint.formattedTime) {
+                // Use pre-formatted time if available
+                formattedTime = dataPoint.formattedTime;
+            } else {
+                // Fallback
+                formattedTime = 'Unknown time';
+            }
 
             return (
                 <div className="bg-gray-800 p-2 border border-gray-700 rounded shadow-md">
-                    <p className="text-gray-300 text-sm">{`Time: ${new Date(label).toLocaleTimeString()}`}</p>
+                    <p className="text-gray-300 text-sm">{`Time: ${formattedTime}`}</p>
                     <p className="text-blue-400 text-sm">{`Response Time: ${payload[0].value} ms`}</p>
                     <p className={`text-sm ${status === 'up' ? 'text-green-400' : 'text-red-400'}`}>
                         Status: {status === 'up' ? 'Online' : 'Down'}
@@ -292,7 +348,7 @@ export default function ServersPage() {
     const formatChartData = (data) => {
         return data.map(item => ({
             ...item,
-            time: formatTimestamp(item.time, getTimezone(selectedServer), 'HH:mm:ss'),
+            formattedTime: formatTimestamp(item.time, getTimezone(selectedServer), 'HH:mm:ss'),
         }));
     };
 
@@ -506,12 +562,31 @@ export default function ServersPage() {
                     {/* Response Time Graph */}
                     <div className="bg-gray-800 rounded-lg p-4 mb-8">
                         <h2 className="text-center text-sm font-medium text-blue-400 mb-2">Response Time (ms)</h2>
+
+                        {/* Show the monitoring schedule information */}
+                        {selectedServer && selectedServer.monitoring && (
+                            <div className="text-xs text-gray-400 text-center mb-2">
+                                Monitoring Schedule:
+                                {selectedServer.monitoring.daysOfWeek && selectedServer.monitoring.daysOfWeek.length > 0
+                                    ? ` ${selectedServer.monitoring.daysOfWeek.map(day => {
+                                        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                                        return days[day];
+                                    }).join(', ')}`
+                                    : ' Every day'
+                                }
+                                {selectedServer.monitoring.timeWindows && selectedServer.monitoring.timeWindows.length > 0
+                                    ? ` from ${selectedServer.monitoring.timeWindows[0].start} to ${selectedServer.monitoring.timeWindows[0].end}`
+                                    : ' 24/7'
+                                }
+                            </div>
+                        )}
+
                         <div className="h-72">
                             {responseTimeData.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={formatChartData(responseTimeData)} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                        <XAxis dataKey="time" stroke="#94a3b8" />
+                                        <XAxis dataKey="formattedTime" stroke="#94a3b8" />
                                         <YAxis stroke="#94a3b8" />
                                         <Tooltip content={CustomTooltip} />
                                         <Line
@@ -521,9 +596,9 @@ export default function ServersPage() {
                                             strokeWidth={2}
                                             activeDot={{ r: 5, fill: "#3b82f6" }}
                                             dot={(props) => {
-                                                const { cx, cy, payload } = props;
+                                                const { cx, cy, payload, index } = props;
                                                 const fill = payload.status === 'up' ? '#3b82f6' : '#ef4444';
-                                                return <circle cx={cx} cy={cy} r={3} fill={fill} />;
+                                                return <circle key={`dot-${index}`} cx={cx} cy={cy} r={3} fill={fill} />;
                                             }}
                                         />
                                     </LineChart>
@@ -534,6 +609,13 @@ export default function ServersPage() {
                                 </div>
                             )}
                         </div>
+
+                        {/* Add a note about data filtering */}
+                        {responseTimeData.length > 0 && (
+                            <div className="text-xs text-gray-400 text-center mt-2">
+                                Note: Chart shows data from monitoring schedule only. Data outside monitoring hours is not displayed.
+                            </div>
+                        )}
                     </div>
 
                     {/* Server configuration details */}
