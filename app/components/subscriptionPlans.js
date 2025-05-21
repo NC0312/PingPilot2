@@ -24,7 +24,9 @@ export const SUBSCRIPTION_PLANS = {
             apiAccess: false,
             prioritySupport: false,
             webhookIntegrations: false,
-            historicalReporting: false
+            historicalReporting: false,
+            supportResponseTime: "48 hours", // Add this new field
+            prioritySupport: false,
         },
         trialDays: 2
     },
@@ -41,7 +43,9 @@ export const SUBSCRIPTION_PLANS = {
             apiAccess: false,
             prioritySupport: false,
             webhookIntegrations: false,
-            historicalReporting: false
+            historicalReporting: false,
+            supportResponseTime: "24 hours",
+            prioritySupport: false,
         },
         durationDays: 30
     },
@@ -58,7 +62,9 @@ export const SUBSCRIPTION_PLANS = {
             apiAccess: false,
             prioritySupport: false,
             webhookIntegrations: true,
-            historicalReporting: true
+            historicalReporting: true,
+            supportResponseTime: "12 hours",
+            prioritySupport: false,
         },
         durationDays: 182
     },
@@ -75,7 +81,9 @@ export const SUBSCRIPTION_PLANS = {
             apiAccess: true,
             prioritySupport: true,
             webhookIntegrations: true,
-            historicalReporting: true
+            historicalReporting: true,
+            supportResponseTime: "4 hours",
+            prioritySupport: true,
         },
         durationDays: 365
     },
@@ -92,7 +100,9 @@ export const SUBSCRIPTION_PLANS = {
             apiAccess: true,
             prioritySupport: true,
             webhookIntegrations: true,
-            historicalReporting: true
+            historicalReporting: true,
+            supportResponseTime: "immediate",
+            prioritySupport: true,
         },
         durationDays: null // Unlimited
     }

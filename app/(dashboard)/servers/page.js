@@ -499,8 +499,8 @@ export default function EnhancedServersPage() {
                             <ChevronDown size={16} className={`ml-2 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                         </motion.button>
 
-                        <AnimatePresence>
-                            {dropdownOpen && (
+                        {dropdownOpen && (
+                            <AnimatePresence>
                                 <motion.div
                                     className="absolute top-full left-0 mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto"
                                     initial={{ opacity: 0, y: -10 }}
@@ -513,7 +513,7 @@ export default function EnhancedServersPage() {
                                             key={server._id || server.id}
                                             onClick={() => handleServerSelect(server)}
                                             className={`w-full text-left px-3 py-2 text-sm transition-colors flex justify-between items-center rounded 
-                                                ${selectedServer?._id === server._id || selectedServer?.id === server.id
+            ${server.name === selectedServer?.name
                                                     ? 'bg-blue-600 text-white hover:bg-blue-700'
                                                     : 'text-gray-300 hover:bg-gray-700'
                                                 }`}
@@ -528,8 +528,8 @@ export default function EnhancedServersPage() {
                                         </motion.button>
                                     ))}
                                 </motion.div>
-                            )}
-                        </AnimatePresence>
+                            </AnimatePresence>
+                        )}
                     </div>
 
                     <motion.button

@@ -8,6 +8,7 @@ import { MonitoringForm } from '@/app/components/Servers/MonitoringForm';
 import { AlertTriangle, CheckCircle, ArrowLeft, Server, ArrowRight, Layers } from 'lucide-react';
 import Link from 'next/link';
 import { getPlanLimits } from '@/app/components/subscriptionPlans';
+import SubscriptionPopup from '@/app/components/SubscriptionPopup';
 
 export default function NewServerPage() {
     const [step, setStep] = useState(1);
@@ -20,6 +21,9 @@ export default function NewServerPage() {
     const [serverCount, setServerCount] = useState(0);
     const [maxServers, setMaxServers] = useState(1);
     const [fetchingUserData, setFetchingUserData] = useState(true);
+
+    // New state for subscription popup
+    const [showSubscriptionPopup, setShowSubscriptionPopup] = useState(false);
 
     const router = useRouter();
     const { user, apiRequest } = useAuth();
@@ -38,13 +42,13 @@ export default function NewServerPage() {
                 const planType = userData.subscription?.plan || 'free';
                 setUserPlan(planType);
 
-                // Get limits based on user role and plan
-                // If user is admin, they get unlimited servers regardless of plan
+                // Get plan limits outside of conditional blocks
+                const planLimits = getPlanLimits(userData);
+
+                // Set max servers based on user role and plan
                 if (userData.role === 'admin') {
                     setMaxServers(Infinity);
                 } else {
-                    // Get max servers from plan limits
-                    const planLimits = getPlanLimits(userData);
                     setMaxServers(planLimits.maxServers);
                 }
 
@@ -56,6 +60,11 @@ export default function NewServerPage() {
 
                     if (response.status === 'success' && response.data.servers) {
                         setServerCount(response.data.servers.length);
+
+                        // Now planLimits is accessible here
+                        if (planType === 'free' && response.data.servers.length >= planLimits.maxServers) {
+                            setShowSubscriptionPopup(true);
+                        }
                     }
                 } catch (err) {
                     console.error('Error fetching servers:', err);
@@ -72,6 +81,13 @@ export default function NewServerPage() {
     }, [user, apiRequest]);
 
     const handleServerFormSubmit = (data) => {
+        // Check if user has reached their server limit
+        if (serverCount >= maxServers && user.role !== 'admin') {
+            // Show subscription popup instead of proceeding
+            setShowSubscriptionPopup(true);
+            return;
+        }
+
         setServerData(data);
         setStep(2);
     };
@@ -139,7 +155,14 @@ export default function NewServerPage() {
             }
         } catch (err) {
             console.error('Error adding server:', err);
-            setError(err.message || 'Failed to add server');
+
+            // If error is about server limit, show subscription popup
+            if (err.message && err.message.includes("plan's limit")) {
+                setShowSubscriptionPopup(true);
+            } else {
+                setError(err.message || 'Failed to add server');
+            }
+
             setStep(1); // Go back to first step on error
         } finally {
             setLoading(false);
@@ -152,6 +175,11 @@ export default function NewServerPage() {
         { number: 2, title: 'Monitoring Settings', completed: !!monitoringData }
     ];
 
+    // Handle subscription popup close
+    const handleCloseSubscriptionPopup = () => {
+        setShowSubscriptionPopup(false);
+    };
+
     // If loading user data, show loading state
     if (fetchingUserData) {
         return (
@@ -163,6 +191,15 @@ export default function NewServerPage() {
 
     return (
         <div className="text-white container mx-auto px-4 py-8 max-w-4xl">
+            {/* Subscription Popup */}
+            <SubscriptionPopup
+                isOpen={showSubscriptionPopup}
+                onClose={handleCloseSubscriptionPopup}
+                currentPlan={userPlan}
+                serverCount={serverCount}
+                maxServers={maxServers}
+            />
+
             <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center">
                     <h1 className="text-2xl font-bold">Add New Server</h1>
