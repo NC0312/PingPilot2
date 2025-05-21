@@ -71,8 +71,14 @@ export default function AdminServersPage() {
           // Create a map of user IDs to display names
           if (usersResponse.data && usersResponse.data.users) {
             usersResponse.data.users.forEach(userData => {
-              if (userData.id) {
-                usersMap[userData.id] = userData.displayName || userData.email || 'Unknown User';
+              // Handle both _id and id fields
+              const userId = userData.id || userData._id;
+              if (userId) {
+                usersMap[userId] = userData.displayName || userData.email || 'Unknown User';
+
+                // Also store with converted id formats
+                // MongoDB sometimes returns ObjectId as string, sometimes as object
+                usersMap[userId.toString()] = userData.displayName || userData.email || 'Unknown User';
               }
             });
           }
@@ -460,7 +466,8 @@ export default function AdminServersPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <div className="flex items-center">
                             <User size={14} className="mr-1 text-gray-400" />
-                            {userMap[server.uploadedBy] || 'Unknown User'}
+                            {(userMap[server.uploadedBy.toString()] ||
+                              'Unknown User')}
                           </div>
                         </td>
                       )}
