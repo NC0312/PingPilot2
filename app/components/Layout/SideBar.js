@@ -18,6 +18,8 @@ import {
     Settings,
     ShieldCheck,
     ChevronRight,
+    MessageSquare,
+    HelpCircle,
     ChevronLeft
 } from 'lucide-react';
 
@@ -67,6 +69,7 @@ const SideBar = () => {
     const baseNavItems = [
         { name: 'Dashboard', icon: <Home size={20} />, href: '/dashboard' },
         { name: 'Servers', icon: <Server size={20} />, href: '/servers' },
+        { name: 'Support', icon: <MessageSquare size={20} />, href: '/support/tickets' },
     ];
 
     // Admin only navigation items
