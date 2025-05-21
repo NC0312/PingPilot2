@@ -69,14 +69,23 @@ const SideBar = () => {
     const baseNavItems = [
         { name: 'Dashboard', icon: <Home size={20} />, href: '/dashboard' },
         { name: 'Servers', icon: <Server size={20} />, href: '/servers' },
-        { name: 'Support', icon: <MessageSquare size={20} />, href: '/support/tickets' },
+        ...(user.role === 'user'
+            ? [{
+                name: 'Support',
+                icon: <MessageSquare size={20} />,
+                href: '/support/tickets',
+            }]
+            : []
+        ),
     ];
+
 
     // Admin only navigation items
     const adminNavItems = [
         { name: 'Admin Overview', icon: <ShieldCheck size={20} />, href: '/admin' },
         { name: 'Analytics', icon: <BarChart4 size={20} />, href: '/admin/analytics' },
         { name: 'Users', icon: <Users size={20} />, href: '/admin/users' },
+        { name: 'Support Tickets', icon: <MessageSquare size={20} />, href: '/admin/support' }
     ];
 
     // Determine which navigation items to show based on role
