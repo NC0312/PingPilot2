@@ -25,11 +25,8 @@ export const AuthProvider = ({ children }) => {
                     return;
                 }
 
-                // Fetch current user with token
                 const response = await fetch(getApiUrl('/api/auth/me'), {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
 
                 if (response.ok) {
@@ -39,24 +36,19 @@ export const AuthProvider = ({ children }) => {
                     // Try refreshing token
                     try {
                         await refreshToken();
-                        // Fetch user data again with new token
                         const newToken = localStorage.getItem('token');
                         const newResponse = await fetch(getApiUrl('/api/auth/me'), {
-                            headers: {
-                                'Authorization': `Bearer ${newToken}`
-                            }
+                            headers: { 'Authorization': `Bearer ${newToken}` }
                         });
 
                         if (newResponse.ok) {
                             const data = await newResponse.json();
                             setUser(data.data.user);
                         } else {
-                            // Clear tokens if refresh didn't work
                             localStorage.removeItem('token');
                             localStorage.removeItem('refreshToken');
                         }
                     } catch (err) {
-                        // Handle refresh token error
                         localStorage.removeItem('token');
                         localStorage.removeItem('refreshToken');
                     }
@@ -74,72 +66,49 @@ export const AuthProvider = ({ children }) => {
     // Token refresh helper
     const refreshToken = async () => {
         const refreshToken = localStorage.getItem('refreshToken');
-
-        if (!refreshToken) {
-            throw new Error('No refresh token available');
-        }
+        if (!refreshToken) throw new Error('No refresh token available');
 
         const response = await fetch(getApiUrl('/api/auth/refresh-token'), {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken }),
         });
 
         const data = await response.json();
-
         if (!response.ok) {
-            // If refresh fails, clear tokens
             localStorage.removeItem('token');
             localStorage.removeItem('refreshToken');
             throw new Error(data.message || 'Failed to refresh token');
         }
 
-        // Update tokens in localStorage
         localStorage.setItem('token', data.data.token);
         if (data.data.refreshToken) {
             localStorage.setItem('refreshToken', data.data.refreshToken);
         }
-
         return data.data;
     };
 
+
     // API request helper with token handling
     const apiRequest = async (endpoint, options = {}) => {
-        // Set up default headers
         const token = localStorage.getItem('token');
         const headers = {
             'Content-Type': 'application/json',
             ...options.headers
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        // Make the request
-        let response = await fetch(getApiUrl(endpoint), {
-            ...options,
-            headers
-        });
+        let response = await fetch(getApiUrl(endpoint), { ...options, headers });
 
-        // Handle 401 Unauthorized (token expired)
+        // Handle token refresh
         if (response.status === 401 && token) {
             try {
-                // Try to refresh the token
                 await refreshToken();
-
-                // Retry the request with the new token
                 const newToken = localStorage.getItem('token');
                 headers['Authorization'] = `Bearer ${newToken}`;
-
-                response = await fetch(getApiUrl(endpoint), {
-                    ...options,
-                    headers
-                });
+                response = await fetch(getApiUrl(endpoint), { ...options, headers });
             } catch (err) {
-                // If refresh fails, redirect to login
                 localStorage.removeItem('token');
                 localStorage.removeItem('refreshToken');
                 setUser(null);
@@ -149,85 +118,60 @@ export const AuthProvider = ({ children }) => {
         }
 
         const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || 'Request failed');
-        }
-
+        if (!response.ok) throw new Error(data.message || 'Request failed');
         return data;
     };
 
     // Sign up function
     const signup = async (email, password, name = '') => {
         setError(null);
-        setLoading(true);
 
-        try {
-            const response = await fetch(getApiUrl('/api/auth/register'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email, password, name }),
-            });
+        const response = await fetch(getApiUrl('/api/auth/register'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, name }),
+        });
 
-            const data = await response.json();
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Registration failed');
 
-            if (!response.ok) {
-                throw new Error(data.message || 'Registration failed');
-            }
-
-            // Store tokens
-            localStorage.setItem('token', data.data.token);
-            localStorage.setItem('refreshToken', data.data.refreshToken);
-
-            setUser(data.data.user);
-            return data.data.user;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        } finally {
-            setLoading(false);
-        }
+        localStorage.setItem('token', data.data.token);
+        localStorage.setItem('refreshToken', data.data.refreshToken);
+        setUser(data.data.user);
+        return data.data.user;
     };
 
     // Login function
     const login = async (email, password) => {
         setError(null);
-        setLoading(true);
 
-        try {
-            const response = await fetch(getApiUrl('/api/auth/login'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email, password }),
-            });
+        const response = await fetch(getApiUrl('/api/auth/login'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                // Check for email_not_verified error code
-                if (data.code === 'email_not_verified') {
-                    throw new Error(data.message || 'Please verify your email before logging in');
-                }
-                throw new Error(data.message || 'Authentication failed');
+        const data = await response.json();
+        if (!response.ok) {
+            if (data.code === 'email_not_verified') {
+                throw new Error('email_not_verified');
             }
-
-            // Store tokens
-            localStorage.setItem('token', data.data.token);
-            localStorage.setItem('refreshToken', data.data.refreshToken);
-
-            setUser(data.data.user);
-            router.push('/dashboard'); // Redirect to dashboard after login
-            return data.data.user;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        } finally {
-            setLoading(false);
+            throw new Error(data.message || 'Authentication failed');
         }
+
+        localStorage.setItem('token', data.data.token);
+        localStorage.setItem('refreshToken', data.data.refreshToken);
+        setUser(data.data.user);
+        router.push('/dashboard');
+        return data.data.user;
+    };
+
+    // Logout function
+    const logout = async () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        setUser(null);
+        router.push('/auth');
     };
 
     // Login without verification (for resending verification email)
@@ -264,27 +208,6 @@ export const AuthProvider = ({ children }) => {
             setUser(data.data.user);
             return data.data.user;
         } catch (err) {
-            setError(err.message);
-            throw err;
-        }
-    };
-
-    // Logout function
-    const logout = async () => {
-        setError(null);
-
-        try {
-            // No need to call the backend for logout as we're using stateless JWT auth
-            // Just remove the tokens from localStorage
-            localStorage.removeItem('token');
-            localStorage.removeItem('refreshToken');
-
-            // Clear user state
-            setUser(null);
-            router.push('/auth');
-            return true;
-        } catch (err) {
-            console.error('Logout error:', err);
             setError(err.message);
             throw err;
         }
