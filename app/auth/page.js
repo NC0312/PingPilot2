@@ -105,12 +105,11 @@ export default function AuthPage() {
 
         try {
             await login(data.email, data.password);
-            // Auth context will handle redirect
+            // AuthContext handles redirect
         } catch (error) {
             console.error('Login error:', error);
             if (error.message === 'email_not_verified') {
                 try {
-                    // Try to get user data without verification check to resend verification later
                     const userData = await loginWithoutVerification(data.email, data.password);
                     setUnverifiedUser(userData);
                 } catch (innerError) {
@@ -119,7 +118,7 @@ export default function AuthPage() {
             }
             handleAuthError(error);
         } finally {
-            setLoading(false);
+            setLoading(false); // Component controls its own loading
         }
     };
 
@@ -135,7 +134,7 @@ export default function AuthPage() {
             console.error('Registration error:', error);
             handleAuthError(error);
         } finally {
-            setLoading(false);
+            setLoading(false); // Component controls its own loading
         }
     };
 
