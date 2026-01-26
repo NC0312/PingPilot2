@@ -7,8 +7,9 @@ import moment from 'moment-timezone';
  * @param {String} format - Formatting string (default: 'YYYY-MM-DD HH:mm:ss')
  * @returns {String} Formatted timestamp
  */
-export const formatTimestamp = (timestamp, timezone = 'Asia/Kolkata', format = 'YYYY-MM-DD HH:mm:ss') => {
+export const formatTimestamp = (timestamp, timezone, format = 'YYYY-MM-DD HH:mm:ss') => {
     if (!timestamp) return 'Never';
+    if (!timezone) return moment(timestamp).local().format(format);
     return moment(timestamp).tz(timezone).format(format);
 };
 

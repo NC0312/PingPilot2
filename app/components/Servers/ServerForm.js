@@ -2,44 +2,12 @@
 
 import React, { useState } from 'react';
 import { AlertTriangle, Globe, Server as ServerIcon, HardDrive, Database, Info, Clock } from 'lucide-react';
-import moment from 'moment-timezone';
-
-const getSortedTimezones = () => {
-    const timezoneGroups = {};
-
-    // Group timezones by region
-    moment.tz.names().forEach(name => {
-        const parts = name.split('/');
-        const region = parts[0];
-        if (!timezoneGroups[region]) {
-            timezoneGroups[region] = [];
-        }
-        timezoneGroups[region].push({
-            name: name,
-            offset: moment().tz(name).format('Z')
-        });
-    });
-
-    // Sort each group by offset
-    Object.keys(timezoneGroups).forEach(region => {
-        timezoneGroups[region].sort((a, b) => {
-            // First sort by offset numerically
-            const offsetA = parseInt(a.offset.replace(':', ''));
-            const offsetB = parseInt(b.offset.replace(':', ''));
-
-            if (offsetA !== offsetB) {
-                return offsetA - offsetB;
-            }
-
-            // If offset is the same, sort alphabetically
-            return a.name.localeCompare(b.name);
-        });
-    });
-
-    return timezoneGroups;
-};
-
-const sortedTimezones = getSortedTimezones();
+// Priority options
+const priorityOptions = [
+    { id: 'high', name: 'High Priority', color: 'text-red-400', description: 'Faster checks, immediate alerts' },
+    { id: 'medium', name: 'Medium Priority', color: 'text-yellow-400', description: 'Standard checking interval' },
+    { id: 'low', name: 'Low Priority', color: 'text-blue-400', description: 'Slower checks, saves resources' }
+];
 
 // Component for displaying plan limits info
 const PlanLimitInfo = ({ userPlan, serverCount, maxServers }) => {
@@ -88,17 +56,7 @@ export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, ma
         url: initialData?.url || '',
         type: initialData?.type || 'website',
         description: initialData?.description || '',
-        timezone: initialData?.timezone || 'Asia/Kolkata' // Default to Indian timezone
-    });
-
-    const timezoneGroups = {};
-    moment.tz.names().forEach(name => {
-        const parts = name.split('/');
-        const region = parts[0];
-        if (!timezoneGroups[region]) {
-            timezoneGroups[region] = [];
-        }
-        timezoneGroups[region].push(name);
+        priority: initialData?.priority || 'medium'
     });
 
     const [validationErrors, setValidationErrors] = useState({});
@@ -237,34 +195,39 @@ export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, ma
                     )}
                 </div>
 
-                <div className="mb-4">
-                    <label htmlFor="timezone" className="block mb-2 text-sm font-medium text-gray-300">
-                        Server Timezone
+                <div className="mb-6">
+                    <label className="block mb-2 text-sm font-medium text-gray-300">
+                        Monitoring Priority
                     </label>
-                    <div className="flex items-center">
-                        <Clock size={20} className="text-gray-400 mr-2" />
-                        <select
-                            id="timezone"
-                            name="timezone"
-                            value={formData.timezone}
-                            onChange={handleChange}
-                            disabled={isFormDisabled || loading}
-                            className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                        >
-                            {Object.keys(sortedTimezones).sort().map(region => (
-                                <optgroup key={region} label={region}>
-                                    {sortedTimezones[region].map(tz => (
-                                        <option key={tz.name} value={tz.name}>
-                                            {tz.name} ({tz.offset})
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            ))}
-                        </select>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {priorityOptions.map((option) => (
+                            <div
+                                key={option.id}
+                                onClick={() => {
+                                    if (!isFormDisabled && !loading) {
+                                        handleChange({
+                                            target: { name: 'priority', value: option.id }
+                                        });
+                                    }
+                                }}
+                                className={`
+                                    border rounded-lg p-3 cursor-pointer transition-all
+                                    ${formData.priority === option.id
+                                        ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500'
+                                        : 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500'}
+                                    ${isFormDisabled || loading ? 'opacity-50 cursor-not-allowed' : ''}
+                                `}
+                            >
+                                <div className="flex items-center mb-1">
+                                    <div className={`w-3 h-3 rounded-full mr-2 ${option.id === 'high' ? 'bg-red-500' :
+                                            option.id === 'medium' ? 'bg-yellow-500' : 'bg-blue-500'
+                                        }`}></div>
+                                    <span className="font-medium text-white text-sm">{option.name}</span>
+                                </div>
+                                <p className="text-xs text-gray-400 pl-5">{option.description}</p>
+                            </div>
+                        ))}
                     </div>
-                    <p className="mt-1 text-xs text-gray-400">
-                        All monitoring times and reports will use this timezone
-                    </p>
                 </div>
 
                 <div className="mb-4">

@@ -196,7 +196,7 @@ export default function AdminServersPage() {
 
       if (response.status === 'success') {
         const checkData = response.data.check;
-        
+
         // Update the server in the list
         setServers(prev =>
           prev.map(server =>
@@ -277,6 +277,8 @@ export default function AdminServersPage() {
       </span>
     );
   };
+
+  console.log(servers);
 
   return (
     <div className="min-h-screen bg-[#031D27] text-white">
@@ -441,7 +443,7 @@ export default function AdminServersPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <a
-                          href={server.url}
+                          href={server.url.startsWith('http') ? server.url : `https://${server.url}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-400 hover:underline flex items-center"

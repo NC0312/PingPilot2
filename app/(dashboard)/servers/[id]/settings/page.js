@@ -82,7 +82,10 @@ export default function ServerSettingsPage() {
                 name: updatedData.name,
                 url: updatedData.url,
                 type: updatedData.type,
-                description: updatedData.description
+                url: updatedData.url,
+                type: updatedData.type,
+                description: updatedData.description,
+                priority: updatedData.priority
             };
 
             // Call API to update server
@@ -202,7 +205,9 @@ export default function ServerSettingsPage() {
             name: server.name,
             url: server.url,
             type: server.type || 'website',
-            description: server.description || ''
+            type: server.type || 'website',
+            description: server.description || '',
+            priority: server.priority || 'medium'
         };
     };
 

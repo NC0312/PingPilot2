@@ -113,6 +113,7 @@ export default function NewServerPage() {
                 url: serverFormData.url,
                 type: serverFormData.type || 'website',
                 description: serverFormData.description || '',
+                priority: serverFormData.priority || 'medium',
                 monitoring: {
                     frequency: monitoringFormData.checkFrequency || 5,
                     daysOfWeek: monitoringFormData.monitoringDays || [1, 2, 3, 4, 5],

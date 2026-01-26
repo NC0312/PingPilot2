@@ -308,7 +308,7 @@ export default function EnhancedServersPage() {
     const formatChartData = (data) => {
         return data.map(item => ({
             ...item,
-            formattedTime: formatTimestamp(item.time, selectedServer?.timezone || 'Asia/Kolkata', 'HH:mm:ss'),
+            formattedTime: formatTimestamp(item.time, null, 'HH:mm:ss'),
         }));
     };
 
@@ -320,12 +320,10 @@ export default function EnhancedServersPage() {
             const status = dataPoint?.status || 'unknown';
 
             // Use the correct timezone
-            const timezone = selectedServer?.timezone || 'Asia/Kolkata';
-
-            // Format the time using the original Date object
+            // Format the time using local time
             let formattedTime;
             if (dataPoint && dataPoint.time instanceof Date) {
-                formattedTime = formatTimestamp(dataPoint.time, timezone);
+                formattedTime = formatTimestamp(dataPoint.time);
             } else {
                 formattedTime = 'Unknown time';
             }
@@ -598,9 +596,19 @@ export default function EnhancedServersPage() {
                                     )}
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-bold text-white mb-1">
-                                        {selectedServer.status === 'up' ? 'Server is Online' : 'Server is Down'}
-                                    </h2>
+                                    <div className="flex items-center gap-3">
+                                        <h2 className="text-2xl font-bold text-white mb-1">
+                                            {selectedServer.status === 'up' ? 'Server is Online' : 'Server is Down'}
+                                        </h2>
+                                        {selectedServer.priority && (
+                                            <span className={`px-2 py-0.5 rounded text-xs font-medium border ${selectedServer.priority === 'high' ? 'bg-red-900/30 text-red-400 border-red-800' :
+                                                    selectedServer.priority === 'low' ? 'bg-blue-900/30 text-blue-400 border-blue-800' :
+                                                        'bg-yellow-900/30 text-yellow-400 border-yellow-800'
+                                                }`}>
+                                                {selectedServer.priority.toUpperCase()} PRIORITY
+                                            </span>
+                                        )}
+                                    </div>
                                     <p className="text-gray-400">
                                         {selectedServer.status === 'up'
                                             ? `Online since ${formatTimestamp(selectedServer.lastStatusChange || selectedServer.lastChecked)}`
