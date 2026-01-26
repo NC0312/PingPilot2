@@ -82,8 +82,6 @@ export default function ServerSettingsPage() {
                 name: updatedData.name,
                 url: updatedData.url,
                 type: updatedData.type,
-                url: updatedData.url,
-                type: updatedData.type,
                 description: updatedData.description,
                 priority: updatedData.priority
             };
