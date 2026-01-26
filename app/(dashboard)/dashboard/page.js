@@ -195,16 +195,18 @@ export default function AdminServersPage() {
       });
 
       if (response.status === 'success') {
+        const checkData = response.data.check;
+        
         // Update the server in the list
         setServers(prev =>
           prev.map(server =>
             server._id === serverId || server.id === serverId
               ? {
                 ...server,
-                status: response.data.status,
-                responseTime: response.data.responseTime,
-                error: response.data.error,
-                lastChecked: response.data.lastChecked
+                status: checkData.status,
+                responseTime: checkData.responseTime,
+                error: checkData.error,
+                lastChecked: checkData.timestamp // Backend sends 'timestamp' in check object
               }
               : server
           )
@@ -215,10 +217,10 @@ export default function AdminServersPage() {
           server._id === serverId || server.id === serverId
             ? {
               ...server,
-              status: response.data.status,
-              responseTime: response.data.responseTime,
-              error: response.data.error,
-              lastChecked: response.data.lastChecked
+              status: checkData.status,
+              responseTime: checkData.responseTime,
+              error: checkData.error,
+              lastChecked: checkData.timestamp
             }
             : server
         ));

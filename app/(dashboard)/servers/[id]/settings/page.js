@@ -41,8 +41,18 @@ export default function ServerSettingsPage() {
 
                 const serverData = response.data.server;
 
-                // Check if user is authorized to access this server
-                if (serverData.uploadedBy !== user.id && user.role !== 'admin') {
+                // Debug logging
+                console.log('Authorization check:', {
+                    serverUploadedBy: serverData.uploadedBy,
+                    userId: user._id || user.id, // Check both _id and id
+                    userRole: user.role,
+                    match: String(serverData.uploadedBy) === String(user._id || user.id)
+                });
+
+                // Check if user is authorized to access this server (convert to strings for comparison)
+                const currentUserId = user._id || user.id; // Support both _id and id
+                if (String(serverData.uploadedBy) !== String(currentUserId) && user.role !== 'admin') {
+                    console.error('Authorization failed - redirecting to /servers');
                     router.push('/servers');
                     return;
                 }

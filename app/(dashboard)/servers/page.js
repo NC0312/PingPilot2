@@ -565,7 +565,7 @@ export default function EnhancedServersPage() {
                     >
                         <Globe size={16} className="mr-2" />
                         <motion.a
-                            href={selectedServer.url}
+                            href={selectedServer.url.startsWith('http') ? selectedServer.url : `https://${selectedServer.url}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-400 hover:underline flex items-center"

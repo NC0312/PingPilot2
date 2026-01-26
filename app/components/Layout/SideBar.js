@@ -69,7 +69,7 @@ const SideBar = () => {
     const baseNavItems = [
         { name: 'Dashboard', icon: <Home size={20} />, href: '/dashboard' },
         { name: 'Servers', icon: <Server size={20} />, href: '/servers' },
-        ...(user.role === 'user'
+        ...(user?.role === 'user'
             ? [{
                 name: 'Support',
                 icon: <MessageSquare size={20} />,
@@ -90,7 +90,7 @@ const SideBar = () => {
 
     // Determine which navigation items to show based on role
     const navItems = baseNavItems;
-    const adminItems = user && user.role === 'admin' ? adminNavItems : [];
+    const adminItems = user?.role === 'admin' ? adminNavItems : [];
 
     // Animation variants
     const sidebarVariants = {
