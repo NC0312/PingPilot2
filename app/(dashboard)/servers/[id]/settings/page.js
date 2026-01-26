@@ -128,8 +128,8 @@ export default function ServerSettingsPage() {
                     daysOfWeek: updatedData.monitoringDays,
                     timeWindows: [
                         {
-                            start: updatedData.checkTimeRange?.start || '09:00',
-                            end: updatedData.checkTimeRange?.end || '17:00'
+                            start: updatedData.checkTimeRange?.start || '00:00',
+                            end: updatedData.checkTimeRange?.end || '23:59'
                         }
                     ],
                     alerts: {
@@ -138,8 +138,8 @@ export default function ServerSettingsPage() {
                         phone: updatedData.alertPreferences?.phone || false,
                         responseThreshold: updatedData.responseThreshold || 1000,
                         timeWindow: {
-                            start: updatedData.alertTimeRange?.start || '09:00',
-                            end: updatedData.alertTimeRange?.end || '17:00'
+                            start: updatedData.alertTimeRange?.start || '00:00',
+                            end: updatedData.alertTimeRange?.end || '23:59'
                         }
                     }
                 },
@@ -220,14 +220,14 @@ export default function ServerSettingsPage() {
                 email: server.monitoring?.alerts?.email || false,
                 phone: server.monitoring?.alerts?.phone || false
             },
-            monitoringDays: server.monitoring?.daysOfWeek || [1, 2, 3, 4, 5],
+            monitoringDays: server.monitoring?.daysOfWeek || [0, 1, 2, 3, 4, 5, 6],
             alertTimeRange: server.monitoring?.alerts?.timeWindow || {
-                start: '09:00',
-                end: '17:00'
+                start: '00:00',
+                end: '23:59'
             },
             checkTimeRange: server.monitoring?.timeWindows?.[0] || {
-                start: '09:00',
-                end: '17:00'
+                start: '00:00',
+                end: '23:59'
             },
             checkFrequency: server.monitoring?.frequency || 5,
             responseThreshold: server.monitoring?.alerts?.responseThreshold || 1000,

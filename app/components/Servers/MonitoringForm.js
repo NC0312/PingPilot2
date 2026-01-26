@@ -396,14 +396,14 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading }) => {
             email: true,
             phone: false
         },
-        monitoringDays: [1, 2, 3, 4, 5], // Monday through Friday
+        monitoringDays: [0, 1, 2, 3, 4, 5, 6], // Monday through Sunday
         alertTimeRange: {
-            start: '09:00',
-            end: '17:00'
+            start: '00:00',
+            end: '23:59'
         },
         checkTimeRange: {
-            start: '08:00',
-            end: '20:00'
+            start: '00:00',
+            end: '23:59'
         },
         checkFrequency: 5, // 5 minutes
         responseThreshold: 1000, // 1000ms
@@ -580,21 +580,43 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading }) => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                {formData.alertPreferences.phone && (
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className={`block text-sm font-medium ${formData.alertPreferences.phone ? 'text-gray-300' : 'text-gray-500'}`}>
+                            Mobile Numbers
+                        </label>
+                        {!formData.alertPreferences.phone && (
+                            <span className="text-xs text-yellow-500 flex items-center">
+                                <AlertTriangle size={12} className="mr-1" />
+                                Call alerts disabled
+                            </span>
+                        )}
+                    </div>
                     <PhoneListManager
                         phones={formData.phones}
                         onAdd={addPhone}
                         onRemove={removePhone}
                     />
-                )}
+                </div>
 
-                {formData.alertPreferences.email && (
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <label className={`block text-sm font-medium ${formData.alertPreferences.email ? 'text-gray-300' : 'text-gray-500'}`}>
+                            Email Addresses
+                        </label>
+                        {!formData.alertPreferences.email && (
+                            <span className="text-xs text-yellow-500 flex items-center">
+                                <AlertTriangle size={12} className="mr-1" />
+                                Email alerts disabled
+                            </span>
+                        )}
+                    </div>
                     <EmailListManager
                         emails={formData.emails}
                         onAdd={addEmail}
                         onRemove={removeEmail}
                     />
-                )}
+                </div>
             </div>
 
             <div className="flex justify-end">

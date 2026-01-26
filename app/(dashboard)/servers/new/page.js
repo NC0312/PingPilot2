@@ -116,11 +116,11 @@ export default function NewServerPage() {
                 priority: serverFormData.priority || 'medium',
                 monitoring: {
                     frequency: monitoringFormData.checkFrequency || 5,
-                    daysOfWeek: monitoringFormData.monitoringDays || [1, 2, 3, 4, 5],
+                    daysOfWeek: monitoringFormData.monitoringDays || [0, 1, 2, 3, 4, 5, 6],
                     timeWindows: [
                         {
-                            start: monitoringFormData.checkTimeRange?.start || '09:00',
-                            end: monitoringFormData.checkTimeRange?.end || '17:00'
+                            start: monitoringFormData.checkTimeRange?.start || '00:00',
+                            end: monitoringFormData.checkTimeRange?.end || '23:59'
                         }
                     ],
                     alerts: {
@@ -129,8 +129,8 @@ export default function NewServerPage() {
                         phone: monitoringFormData.alertPreferences?.phone || false,
                         responseThreshold: monitoringFormData.responseThreshold || 1000,
                         timeWindow: {
-                            start: monitoringFormData.alertTimeRange?.start || '09:00',
-                            end: monitoringFormData.alertTimeRange?.end || '17:00'
+                            start: monitoringFormData.alertTimeRange?.start || '00:00',
+                            end: monitoringFormData.alertTimeRange?.end || '23:59'
                         }
                     }
                 },
