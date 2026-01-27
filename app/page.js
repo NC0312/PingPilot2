@@ -41,70 +41,78 @@ const LandingPage = () => {
     }
   }
 
-  // Pricing plans data
-  const pricingPlans = [
-    {
-      title: "FREE",
-      price: "$0",
-      period: "2-day trial",
-      description: "Perfect for testing our platform.",
-      features: [
-        { included: true, text: "1 URL monitoring" },
-        { included: true, text: "2-day access" },
-        { included: true, text: "Basic email alerts" },
-        { included: false, text: "Multiple URLs" }
-      ],
-      buttonText: "Start Free",
-      buttonAction: () => setShowPricingPopup(true),
-      buttonStyle: "gray",
-      tag: null
-    },
-    {
-      title: "MONTHLY",
-      price: "$10",
-      period: "per month",
-      description: "For individual developers and small websites.",
-      features: [
-        { included: true, text: "Unlimited URLs" },
-        { included: true, text: "Real-time monitoring" },
-        { included: true, text: "Email & SMS alerts" },
-        { included: true, text: "24/7 support" }
-      ],
-      buttonText: "Choose Monthly",
-      buttonStyle: "blue",
-      tag: { text: "POPULAR", color: "blue" }
-    },
-    {
-      title: "HALF-YEARLY",
-      price: "$55",
-      period: "per 6 months (save 8.3%)",
-      description: "For growing businesses with multiple sites.",
-      features: [
-        { included: true, text: "Everything in Monthly" },
-        { included: true, text: "Faster check intervals" },
-        { included: true, text: "Historical reporting" },
-        { included: true, text: "Webhook integrations" }
-      ],
-      buttonText: "Choose Half-Yearly",
-      buttonStyle: "gray",
-      tag: null
-    },
-    {
-      title: "YEARLY",
-      price: "$105",
-      period: "per year (save 12.5%)",
-      description: "For businesses requiring continuous monitoring.",
-      features: [
-        { included: true, text: "Everything in Half-Yearly" },
-        { included: true, text: "Advanced analytics" },
-        { included: true, text: "API access" },
-        { included: true, text: "Priority support" }
-      ],
-      buttonText: "Choose Yearly",
-      buttonStyle: "gray",
-      tag: { text: "BEST VALUE", color: "green" }
-    }
-  ]
+  // State for billing cycle
+  const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' or 'yearly'
+
+  // Pricing plans configuration
+  const getPricingPlans = () => {
+    const isMonthly = billingCycle === 'monthly';
+    return [
+      {
+        title: "FREE",
+        price: "$0",
+        period: "2-day trial",
+        description: "Perfect for testing our platform.",
+        features: [
+          { included: true, text: "1 URL monitoring" },
+          { included: true, text: "5-minute check interval" },
+          { included: true, text: "Basic email alerts" },
+          { included: false, text: "Multiple URLs" }
+        ],
+        buttonText: "Start Free",
+        buttonAction: () => setShowPricingPopup(true),
+        buttonStyle: "gray",
+        tag: null
+      },
+      {
+        title: "STARTER",
+        price: isMonthly ? "$10" : "$100",
+        period: isMonthly ? "per month" : "per year (save 17%)",
+        description: "For individual developers.",
+        features: [
+          { included: true, text: "10 URL monitoring" },
+          { included: true, text: "3-minute check interval" },
+          { included: true, text: "Email alerts" },
+          { included: true, text: "Historical reporting" }
+        ],
+        buttonText: `Choose Starter ${isMonthly ? 'Monthly' : 'Yearly'}`,
+        buttonStyle: "gray",
+        tag: null
+      },
+      {
+        title: "PRO",
+        price: isMonthly ? "$29" : "$290",
+        period: isMonthly ? "per month" : "per year (save 17%)",
+        description: "For growing websites.",
+        features: [
+          { included: true, text: "30 URL monitoring" },
+          { included: true, text: "1-minute check interval" },
+          { included: true, text: "Email & SMS alerts" },
+          { included: true, text: "Priority support" }
+        ],
+        buttonText: `Choose Pro ${isMonthly ? 'Monthly' : 'Yearly'}`,
+        buttonStyle: "blue",
+        tag: { text: "POPULAR", color: "blue" }
+      },
+      {
+        title: "BUSINESS",
+        price: isMonthly ? "$79" : "$790",
+        period: isMonthly ? "per month" : "per year (save 17%)",
+        description: "For SaaS & Enterprise.",
+        features: [
+          { included: true, text: "100 URL monitoring" },
+          { included: true, text: "1-minute check interval" },
+          { included: true, text: "Webhook integrations" },
+          { included: true, text: "API Access" }
+        ],
+        buttonText: `Choose Business ${isMonthly ? 'Monthly' : 'Yearly'}`,
+        buttonStyle: "gray",
+        tag: { text: "BEST VALUE", color: "green" }
+      }
+    ];
+  };
+
+  const pricingPlans = getPricingPlans();
 
   return (
     <div className='flex flex-col min-h-screen bg-[#031D27] text-gray-400'>
@@ -195,6 +203,34 @@ const LandingPage = () => {
         >
           Choose a Plan That Fits Your Monitoring Needs
         </motion.h2>
+
+        {/* Pricing Toggle */}
+        <div className="flex justify-center mb-10">
+          <div className="bg-gray-800 p-1 rounded-xl flex items-center relative">
+            <button
+              onClick={() => setBillingCycle('monthly')}
+              className={`relative z-10 px-6 py-2 rounded-lg font-mono transition-colors ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setBillingCycle('yearly')}
+              className={`relative z-10 px-6 py-2 rounded-lg font-mono transition-colors ${billingCycle === 'yearly' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
+            >
+              Yearly
+            </button>
+            <motion.div
+              className="absolute top-1 bottom-1 bg-blue-600 rounded-lg"
+              initial={false}
+              animate={{
+                x: billingCycle === 'monthly' ? 4 : '100%',
+                left: billingCycle === 'monthly' ? 0 : -4,
+                width: '50%'
+              }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            />
+          </div>
+        </div>
 
         <motion.div
           variants={staggerContainer}

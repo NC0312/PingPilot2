@@ -3,9 +3,12 @@
 // Define plan types
 export const PLAN_TYPES = {
     FREE: 'free',
-    MONTHLY: 'monthly',
-    HALF_YEARLY: 'halfYearly',
-    YEARLY: 'yearly',
+    STARTER_MONTHLY: 'starter_monthly',
+    STARTER_YEARLY: 'starter_yearly',
+    PRO_MONTHLY: 'pro_monthly',
+    PRO_YEARLY: 'pro_yearly',
+    BUSINESS_MONTHLY: 'business_monthly',
+    BUSINESS_YEARLY: 'business_yearly',
     ADMIN: 'admin'
 };
 
@@ -25,56 +28,113 @@ export const SUBSCRIPTION_PLANS = {
             prioritySupport: false,
             webhookIntegrations: false,
             historicalReporting: false,
-            supportResponseTime: "48 hours", // Add this new field
+            supportResponseTime: "48 hours",
             prioritySupport: false,
         },
         trialDays: 2
     },
-    [PLAN_TYPES.MONTHLY]: {
-        title: "MONTHLY",
+    [PLAN_TYPES.STARTER_MONTHLY]: {
+        title: "STARTER",
         price: "$10",
         period: "per month",
-        description: "For individual developers and small websites.",
+        description: "For individual developers.",
         features: {
             maxServers: 10,
-            minCheckFrequency: 5,
+            minCheckFrequency: 3,
             maxCheckFrequency: 60,
-            advancedAlerts: true,
+            advancedAlerts: false,
             apiAccess: false,
             prioritySupport: false,
             webhookIntegrations: false,
-            historicalReporting: false,
+            historicalReporting: true,
             supportResponseTime: "24 hours",
             prioritySupport: false,
         },
         durationDays: 30
     },
-    [PLAN_TYPES.HALF_YEARLY]: {
-        title: "HALF-YEARLY",
-        price: "$55",
-        period: "per 6 months (save 8.3%)",
-        description: "For growing businesses with multiple sites.",
-        features: {
-            maxServers: 15,
-            minCheckFrequency: 1,
-            maxCheckFrequency: 30,
-            advancedAlerts: true,
+    [PLAN_TYPES.STARTER_YEARLY]: {
+        title: "STARTER",
+        price: "$100",
+        period: "per year (save 17%)",
+        description: "For individual developers.",
+        features: { // Same as monthly
+            maxServers: 10,
+            minCheckFrequency: 3,
+            maxCheckFrequency: 60,
+            advancedAlerts: false,
             apiAccess: false,
             prioritySupport: false,
-            webhookIntegrations: true,
+            webhookIntegrations: false,
             historicalReporting: true,
-            supportResponseTime: "12 hours",
+            supportResponseTime: "24 hours",
             prioritySupport: false,
         },
-        durationDays: 182
+        durationDays: 365
     },
-    [PLAN_TYPES.YEARLY]: {
-        title: "YEARLY",
-        price: "$105",
-        period: "per year (save 12.5%)",
-        description: "For businesses requiring continuous monitoring.",
+    [PLAN_TYPES.PRO_MONTHLY]: {
+        title: "PRO",
+        price: "$29",
+        period: "per month",
+        description: "For growing websites.",
         features: {
-            maxServers: 25,
+            maxServers: 30,
+            minCheckFrequency: 1,
+            maxCheckFrequency: 60,
+            advancedAlerts: true,
+            apiAccess: false,
+            prioritySupport: true,
+            webhookIntegrations: false,
+            historicalReporting: true,
+            supportResponseTime: "12 hours",
+            prioritySupport: true,
+        },
+        durationDays: 30
+    },
+    [PLAN_TYPES.PRO_YEARLY]: {
+        title: "PRO",
+        price: "$290",
+        period: "per year (save 17%)",
+        description: "For growing websites.",
+        features: { // Same as monthly
+            maxServers: 30,
+            minCheckFrequency: 1,
+            maxCheckFrequency: 60,
+            advancedAlerts: true,
+            apiAccess: false,
+            prioritySupport: true,
+            webhookIntegrations: false,
+            historicalReporting: true,
+            supportResponseTime: "12 hours",
+            prioritySupport: true,
+        },
+        durationDays: 365
+    },
+    [PLAN_TYPES.BUSINESS_MONTHLY]: {
+        title: "BUSINESS",
+        price: "$79",
+        period: "per month",
+        description: "For SaaS & Enterprise.",
+        features: {
+            maxServers: 100,
+            minCheckFrequency: 1,
+            maxCheckFrequency: 60,
+            advancedAlerts: true,
+            apiAccess: true,
+            prioritySupport: true,
+            webhookIntegrations: true,
+            historicalReporting: true,
+            supportResponseTime: "4 hours",
+            prioritySupport: true,
+        },
+        durationDays: 30
+    },
+    [PLAN_TYPES.BUSINESS_YEARLY]: {
+        title: "BUSINESS",
+        price: "$790",
+        period: "per year (save 17%)",
+        description: "For SaaS & Enterprise.",
+        features: { // Same as monthly
+            maxServers: 100,
             minCheckFrequency: 1,
             maxCheckFrequency: 60,
             advancedAlerts: true,
