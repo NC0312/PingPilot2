@@ -59,7 +59,10 @@ export default function AdminServersPage() {
 
       // For admin view, we need user information
       if (isAdmin() && serversList.length > 0) {
-        const userIds = [...new Set(serversList.map(server => server.uploadedBy))];
+        const userIds = [...new Set(serversList.map(server => {
+          if (!server.uploadedBy) return null;
+          return typeof server.uploadedBy === 'object' ? server.uploadedBy._id || server.uploadedBy.id : server.uploadedBy;
+        }).filter(Boolean))];
         const usersMap = {};
 
         // Get user info for each user ID
@@ -470,8 +473,9 @@ export default function AdminServersPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <div className="flex items-center">
                             <User size={14} className="mr-1 text-gray-400" />
-                            {(userMap[server.uploadedBy.toString()] ||
-                              'Unknown User')}
+                            {(server.uploadedBy && typeof server.uploadedBy === 'object' && server.uploadedBy.email) ?
+                              (server.uploadedBy.displayName || server.uploadedBy.email) :
+                              (userMap[server.uploadedBy] || 'Unknown User')}
                           </div>
                         </td>
                       )}
