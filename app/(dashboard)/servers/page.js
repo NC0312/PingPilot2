@@ -497,8 +497,8 @@ export default function EnhancedServersPage() {
                             <ChevronDown size={16} className={`ml-2 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
                         </motion.button>
 
-                        {dropdownOpen && (
-                            <AnimatePresence>
+                        <AnimatePresence>
+                            {dropdownOpen && (
                                 <motion.div
                                     className="absolute top-full left-0 mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto"
                                     initial={{ opacity: 0, y: -10 }}
@@ -506,28 +506,32 @@ export default function EnhancedServersPage() {
                                     exit={{ opacity: 0, y: -10 }}
                                     transition={{ duration: 0.2 }}
                                 >
-                                    {servers.map(server => (
-                                        <motion.button
-                                            key={server._id || server.id}
-                                            onClick={() => handleServerSelect(server)}
-                                            className={`w-full text-left px-3 py-2 text-sm transition-colors flex justify-between items-center rounded 
-            ${server.name === selectedServer?.name
-                                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                                    : 'text-gray-300 hover:bg-gray-700'
-                                                }`}
-                                        >
-                                            <span className="truncate max-w-[85%] block">
-                                                {server.name}
-                                            </span>
-                                            <span
-                                                className={`w-2.5 h-2.5 rounded-full ml-2 flex-shrink-0 ${server.status === 'up' ? 'bg-green-500' : 'bg-red-500'}`}
-                                                aria-label={server.status === 'up' ? 'Server online' : 'Server offline'}
-                                            ></span>
-                                        </motion.button>
-                                    ))}
+                                    {servers && servers.length > 0 ? (
+                                        servers.map(server => (
+                                            <motion.button
+                                                key={server._id || server.id}
+                                                onClick={() => handleServerSelect(server)}
+                                                className={`w-full text-left px-3 py-2 text-sm transition-colors flex justify-between items-center rounded 
+                                                    ${server.name === selectedServer?.name
+                                                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                                        : 'text-gray-300 hover:bg-gray-700'
+                                                    }`}
+                                            >
+                                                <span className="truncate max-w-[85%] block">
+                                                    {server.name}
+                                                </span>
+                                                <span
+                                                    className={`w-2.5 h-2.5 rounded-full ml-2 flex-shrink-0 ${server.status === 'up' ? 'bg-green-500' : 'bg-red-500'}`}
+                                                    aria-label={server.status === 'up' ? 'Server online' : 'Server offline'}
+                                                ></span>
+                                            </motion.button>
+                                        ))
+                                    ) : (
+                                        <div className="px-3 py-2 text-sm text-gray-500 text-center">No servers found</div>
+                                    )}
                                 </motion.div>
-                            </AnimatePresence>
-                        )}
+                            )}
+                        </AnimatePresence>
                     </div>
 
                     <motion.button
@@ -602,8 +606,8 @@ export default function EnhancedServersPage() {
                                         </h2>
                                         {selectedServer.priority && (
                                             <span className={`px-2 py-0.5 rounded text-xs font-medium border ${selectedServer.priority === 'high' ? 'bg-red-900/30 text-red-400 border-red-800' :
-                                                    selectedServer.priority === 'low' ? 'bg-blue-900/30 text-blue-400 border-blue-800' :
-                                                        'bg-yellow-900/30 text-yellow-400 border-yellow-800'
+                                                selectedServer.priority === 'low' ? 'bg-blue-900/30 text-blue-400 border-blue-800' :
+                                                    'bg-yellow-900/30 text-yellow-400 border-yellow-800'
                                                 }`}>
                                                 {selectedServer.priority.toUpperCase()} PRIORITY
                                             </span>
