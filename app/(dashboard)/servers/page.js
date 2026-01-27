@@ -193,8 +193,15 @@ export default function EnhancedServersPage() {
 
                 socket.on('server:update', handleUpdate);
 
+                // Immediate sync on reconnection
+                socket.on('connect', () => {
+                    console.log('⚡ Socket reconnected, syncing data...');
+                    fetchServers(false);
+                });
+
                 return () => {
                     socket.off('server:update', handleUpdate);
+                    socket.off('connect');
                     clearInterval(intervalId);
                 };
             }
@@ -402,6 +409,7 @@ export default function EnhancedServersPage() {
     const formatChartData = (data) => {
         return data.map(item => ({
             ...item,
+            timestamp: item.time.getTime(),
             formattedTime: formatTimestamp(item.time, null, 'HH:mm:ss'),
         }));
     };
@@ -921,7 +929,35 @@ export default function EnhancedServersPage() {
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <LineChart data={formatChartData(responseTimeData)} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                                    <XAxis dataKey="formattedTime" stroke="#94a3b8" />
+                                                    <XAxis
+                                                        dataKey="timestamp"
+                                                        type="number"
+                                                        domain={(domain) => {
+                                                            const min = domain[0];
+                                                            const max = domain[1];
+                                                            // Round to nearest hour
+                                                            const niceMin = Math.floor(min / 3600000) * 3600000;
+                                                            const niceMax = Math.ceil(max / 3600000) * 3600000;
+                                                            // Ensure at least 1 hour range
+                                                            return [niceMin, Math.max(niceMax, niceMin + 3600000)];
+                                                        }}
+                                                        ticks={(() => {
+                                                            if (responseTimeData.length === 0) return [];
+                                                            const times = responseTimeData.map(d => d.time.getTime());
+                                                            const min = Math.min(...times);
+                                                            const max = Math.max(...times);
+                                                            const start = Math.floor(min / 3600000) * 3600000;
+                                                            const end = Math.ceil(max / 3600000) * 3600000;
+                                                            const ticks = [];
+                                                            // Generate hourly ticks
+                                                            for (let t = start; t <= end; t += 3600000) {
+                                                                ticks.push(t);
+                                                            }
+                                                            return ticks;
+                                                        })()}
+                                                        tickFormatter={(unixTime) => formatTimestamp(new Date(unixTime), null, 'HH:mm')}
+                                                        stroke="#94a3b8"
+                                                    />
                                                     <YAxis stroke="#94a3b8" />
                                                     <Tooltip content={CustomTooltip} />
                                                     <Line
@@ -1065,7 +1101,35 @@ export default function EnhancedServersPage() {
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <LineChart data={formatChartData(responseTimeData)} margin={{ top: 5, right: 20, left: 10, bottom: 20 }}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                                                    <XAxis dataKey="formattedTime" stroke="#94a3b8" />
+                                                    <XAxis
+                                                        dataKey="timestamp"
+                                                        type="number"
+                                                        domain={(domain) => {
+                                                            const min = domain[0];
+                                                            const max = domain[1];
+                                                            // Round to nearest hour
+                                                            const niceMin = Math.floor(min / 3600000) * 3600000;
+                                                            const niceMax = Math.ceil(max / 3600000) * 3600000;
+                                                            // Ensure at least 1 hour range
+                                                            return [niceMin, Math.max(niceMax, niceMin + 3600000)];
+                                                        }}
+                                                        ticks={(() => {
+                                                            if (responseTimeData.length === 0) return [];
+                                                            const times = responseTimeData.map(d => d.time.getTime());
+                                                            const min = Math.min(...times);
+                                                            const max = Math.max(...times);
+                                                            const start = Math.floor(min / 3600000) * 3600000;
+                                                            const end = Math.ceil(max / 3600000) * 3600000;
+                                                            const ticks = [];
+                                                            // Generate hourly ticks
+                                                            for (let t = start; t <= end; t += 3600000) {
+                                                                ticks.push(t);
+                                                            }
+                                                            return ticks;
+                                                        })()}
+                                                        tickFormatter={(unixTime) => formatTimestamp(new Date(unixTime), null, 'HH:mm')}
+                                                        stroke="#94a3b8"
+                                                    />
                                                     <YAxis stroke="#94a3b8" />
                                                     <Tooltip content={CustomTooltip} />
                                                     <Line
