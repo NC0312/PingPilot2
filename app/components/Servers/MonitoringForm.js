@@ -273,6 +273,61 @@ export const PhoneListManager = ({ phones, onAdd, onRemove }) => {
     );
 };
 
+export const WebhookInputManager = ({ webhookUrl, onChange, disabled }) => {
+    const [url, setUrl] = useState(webhookUrl || '');
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        setUrl(webhookUrl || '');
+    }, [webhookUrl]);
+
+    const validateUrl = (value) => {
+        try {
+            new URL(value);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    };
+
+    const handleChange = (e) => {
+        const newValue = e.target.value;
+        setUrl(newValue);
+
+        if (newValue && !validateUrl(newValue)) {
+            setError('Invalid URL format');
+        } else {
+            setError('');
+            onChange(newValue);
+        }
+    };
+
+    return (
+        <div className="mb-4">
+            <label className="block mb-1 text-sm font-medium text-gray-300 flex items-center">
+                Webhook URL
+                {!disabled && <span className="ml-2 text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded-full">Premium</span>}
+            </label>
+            <div className="relative">
+                <input
+                    type="text"
+                    value={url}
+                    onChange={handleChange}
+                    disabled={disabled}
+                    className={`bg-gray-700 border ${error ? 'border-red-500' : 'border-gray-600'} text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    placeholder="https://your-api.com/webhook"
+                />
+            </div>
+            {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+            {disabled && (
+                <p className="mt-1 text-xs text-gray-500">
+                    Upgrade to Business plan to enable webhook integrations.
+                </p>
+            )}
+        </div>
+    );
+};
+
 export const FrequencySlider = ({ value, onChange, minValue, maxValue, premiumText }) => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin';
@@ -407,6 +462,7 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading }) => {
         },
         checkFrequency: 5, // 5 minutes
         responseThreshold: 1000, // 1000ms
+        webhookUrl: '',
         emails: [],
         phones: []
     };
@@ -615,6 +671,14 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading }) => {
                         emails={formData.emails}
                         onAdd={addEmail}
                         onRemove={removeEmail}
+                    />
+                </div>
+
+                <div className="col-span-1 lg:col-span-2">
+                    <WebhookInputManager
+                        webhookUrl={formData.webhookUrl}
+                        onChange={(url) => handleChange('webhookUrl', url)}
+                        disabled={!isAdmin && !user?.subscription?.features?.webhookIntegrations}
                     />
                 </div>
             </div>
