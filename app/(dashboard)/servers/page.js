@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
+import { useSocket } from '@/app/components/providers/SocketProvider';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatTimestamp, formatDuration, formatRelativeTime } from '@/app/components/dateTimeUtils';
 
@@ -77,14 +78,14 @@ export default function EnhancedServersPage() {
     };
 
     // Fetch servers from API
-    const fetchServers = async () => {
+    const fetchServers = async (isInitialLoad = true) => {
         if (!user) {
             setLoading(false);
             return;
         }
 
         try {
-            setLoading(true);
+            if (isInitialLoad) setLoading(true);
 
             // Make API request to get servers
             const response = await apiRequest('/api/servers', {
@@ -114,29 +115,99 @@ export default function EnhancedServersPage() {
             console.error('Error fetching servers:', err);
             setError('Failed to load servers. Please try again.');
         } finally {
-            setLoading(false);
+            if (isInitialLoad) setLoading(false);
         }
     };
 
-    // Set up initial data loading
+    // Set up initial data loading and WebSocket updates
+    const { socket, isConnected } = useSocket();
+
     useEffect(() => {
         if (user) {
-            fetchServers();
+            fetchServers(true);
 
-            // Set up refresh interval - every 60 seconds
+            // Note: We don't rely only on the interval anymore, but we keep it as a fallback
+            // sync mechanism (e.g. if socket reconnects or misses a message)
             const intervalId = setInterval(() => {
-                fetchServers();
+                fetchServers(false);
             }, 60 * 1000);
+
+            // Socket.io event listeners
+            if (socket) {
+                const handleUpdate = (data) => {
+                    // console.log('⚡ WebSocket Update:', data);
+
+                    // Update servers list state
+                    setServers(prevServers => {
+                        return prevServers.map(server => {
+                            if (server._id === data.serverId || server.id === data.serverId) {
+                                return {
+                                    ...server,
+                                    status: data.status,
+                                    responseTime: data.latency,
+                                    lastChecked: data.lastChecked
+                                };
+                            }
+                            return server;
+                        });
+                    });
+
+                    // Update selected server if it matches
+                    if (selectedServer && (selectedServer._id === data.serverId || selectedServer.id === data.serverId)) {
+                        setSelectedServer(prev => ({
+                            ...prev,
+                            status: data.status,
+                            responseTime: data.latency,
+                            lastChecked: data.lastChecked
+                        }));
+
+                        // Add new data point to the specific server history (avoiding full refetch for smoothness)
+                        setResponseTimeData(prevHistory => {
+                            const newPoint = {
+                                time: new Date(data.lastChecked),
+                                avgTime: data.latency || 0,
+                                status: data.status || 'unknown',
+                                day: new Date(data.lastChecked).getDay(),
+                                hour: new Date(data.lastChecked).getHours(),
+                                minute: new Date(data.lastChecked).getMinutes(),
+                                formattedTime: formatTimestamp(new Date(data.lastChecked), null, 'HH:mm:ss')
+                            };
+
+                            // Check if this timestamp already exists to prevent duplicates (socket might emit twice)
+                            const exists = prevHistory.some(p => p.time.getTime() === newPoint.time.getTime());
+                            if (exists) return prevHistory;
+
+                            // Keep only last ~24h of data (approximate count or real time check)
+                            // Ideally we just append and let the chart handle it, maybe slice if too big
+                            const updated = [...prevHistory, newPoint].sort((a, b) => a.time - b.time);
+
+                            // Optional: Keep only last 24h worth of points to prevent memory leak on long sessions
+                            // Assuming 5 min check interval -> 288 checks per day. 500 is safe buffer.
+                            if (updated.length > 500) {
+                                return updated.slice(updated.length - 500);
+                            }
+                            return updated;
+                        });
+                    }
+                };
+
+                socket.on('server:update', handleUpdate);
+
+                return () => {
+                    socket.off('server:update', handleUpdate);
+                    clearInterval(intervalId);
+                };
+            }
 
             return () => clearInterval(intervalId);
         }
-    }, [user]);
+    }, [user, socket, selectedServer?._id]); // Re-bind if selected server changes to ensure closure has correct ID
 
     // Fetch server history data
     const fetchServerHistory = async (serverId) => {
         try {
             // Get the last 24 hours of history data
-            const response = await apiRequest(`/api/servers/${serverId}/history?period=24h`, {
+            const response = await apiRequest(`/api/servers/${serverId}/history?period=24h&limit=500`, {
                 method: 'GET'
             });
 
@@ -166,9 +237,10 @@ export default function EnhancedServersPage() {
 
                     // Filter by time range if specified
                     if (selectedServer.monitoring.timeWindows && selectedServer.monitoring.timeWindows.length > 0) {
-                        // Handle the special case of 24/7 monitoring (00:00 to 00:00)
+                        // Handle the special case of 24/7 monitoring (00:00 to 00:00 OR 00:00 to 23:59)
                         const has24x7Window = selectedServer.monitoring.timeWindows.some(window =>
-                            window.start === "00:00" && window.end === "00:00");
+                            (window.start === "00:00" && window.end === "00:00") ||
+                            (window.start === "00:00" && window.end === "23:59"));
 
                         if (!has24x7Window) {
                             historicalData = historicalData.filter(item => {
@@ -182,7 +254,13 @@ export default function EnhancedServersPage() {
                                     const endMinutes = endHour * 60 + endMinute;
                                     const itemMinutes = item.hour * 60 + item.minute;
 
-                                    return itemMinutes >= startMinutes && itemMinutes <= endMinutes;
+                                    if (endMinutes < startMinutes) {
+                                        // Overnight window (e.g. 22:00 to 06:00) covers late night OR early morning
+                                        return itemMinutes >= startMinutes || itemMinutes <= endMinutes;
+                                    } else {
+                                        // Standard window (e.g. 09:00 to 17:00)
+                                        return itemMinutes >= startMinutes && itemMinutes <= endMinutes;
+                                    }
                                 });
                             });
                         }
@@ -211,13 +289,15 @@ export default function EnhancedServersPage() {
             });
 
             if (response.status === 'success') {
+                const checkData = response.data.check;
+
                 // Update the selected server with new status
                 setSelectedServer(prev => ({
                     ...prev,
-                    status: response.data.status,
-                    responseTime: response.data.responseTime,
-                    error: response.data.error,
-                    lastChecked: response.data.lastChecked
+                    status: checkData.status,
+                    responseTime: checkData.responseTime,
+                    error: checkData.error,
+                    lastChecked: checkData.timestamp
                 }));
 
                 // Update the server in the servers list
@@ -225,13 +305,27 @@ export default function EnhancedServersPage() {
                     (server._id === serverId || server.id === serverId)
                         ? {
                             ...server,
-                            status: response.data.status,
-                            responseTime: response.data.responseTime,
-                            error: response.data.error,
-                            lastChecked: response.data.lastChecked
+                            status: checkData.status,
+                            responseTime: checkData.responseTime,
+                            error: checkData.error,
+                            lastChecked: checkData.timestamp
                         }
                         : server
                 ));
+
+                // Add to history immediately
+                setResponseTimeData(prevHistory => {
+                    const newPoint = {
+                        time: new Date(checkData.timestamp),
+                        avgTime: checkData.responseTime || 0,
+                        status: checkData.status || 'unknown',
+                        day: new Date(checkData.timestamp).getDay(),
+                        hour: new Date(checkData.timestamp).getHours(),
+                        minute: new Date(checkData.timestamp).getMinutes(),
+                        formattedTime: formatTimestamp(new Date(checkData.timestamp), null, 'HH:mm:ss')
+                    };
+                    return [...prevHistory, newPoint].sort((a, b) => a.time - b.time);
+                });
 
                 // Fetch updated server history
                 fetchServerHistory(serverId);

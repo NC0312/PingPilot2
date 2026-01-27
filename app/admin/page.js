@@ -53,10 +53,10 @@ export default function AdminDashboard() {
         }
     };
 
-    const fetchAdminStats = async () => {
-        setLoading(true);
+    const fetchAdminStats = async (isInitialLoad = true) => {
+        if (isInitialLoad) setLoading(true);
         setError(null);
-        setRefreshing(true);
+        if (!isInitialLoad) setRefreshing(true);
 
         try {
             // Get analytics data from the backend
@@ -96,15 +96,26 @@ export default function AdminDashboard() {
 
             for (const server of recentServers) {
                 try {
-                    // Get user info for each server
-                    const userResponse = await apiRequest(`/api/users/${server.uploadedBy}`, {
-                        method: 'GET'
-                    });
+                    let userData;
+                    let displayName = 'Unknown user';
 
-                    if (userResponse.status === 'success') {
-                        const userData = userResponse.data.user;
-                        const displayName = userData.displayName || userData.email || 'Unknown user';
+                    // Check if uploadedBy is populated (object) or just an ID (string)
+                    if (server.uploadedBy && typeof server.uploadedBy === 'object') {
+                        userData = server.uploadedBy;
+                        displayName = userData.displayName || userData.email || 'Unknown user';
+                    } else {
+                        // Fallback: Fetch user info if not populated
+                        const userResponse = await apiRequest(`/api/users/${server.uploadedBy}`, {
+                            method: 'GET'
+                        });
 
+                        if (userResponse.status === 'success') {
+                            userData = userResponse.data.user;
+                            displayName = userData.displayName || userData.email || 'Unknown user';
+                        }
+                    }
+
+                    if (displayName) { // Proceed if we have a name (even "Unknown user")
                         // Calculate time ago
                         const uploadedAt = new Date(server.uploadedAt || server.createdAt);
                         const now = new Date();
@@ -133,7 +144,7 @@ export default function AdminDashboard() {
                         });
                     }
                 } catch (err) {
-                    console.error('Error fetching user data:', err);
+                    console.error('Error processing recent activity:', err);
                 }
             }
 
@@ -162,16 +173,18 @@ export default function AdminDashboard() {
             console.error('Error fetching admin stats:', err);
             setError('Failed to load admin dashboard data. Please try again.');
         } finally {
-            setLoading(false);
+            if (isInitialLoad) setLoading(false);
             setRefreshing(false);
         }
     };
 
     useEffect(() => {
-        fetchAdminStats();
+        fetchAdminStats(true);
 
         // Set up an interval to refresh data every 60 seconds
-        const intervalId = setInterval(fetchAdminStats, 60000);
+        const intervalId = setInterval(() => {
+            fetchAdminStats(false);
+        }, 60000);
 
         // Clean up interval on component unmount
         return () => clearInterval(intervalId);

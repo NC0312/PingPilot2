@@ -65,10 +65,10 @@ export default function AdminAnalytics() {
         }
     };
 
-    const fetchAnalyticsData = async () => {
-        setLoading(true);
+    const fetchAnalyticsData = async (isInitialLoad = true) => {
+        if (isInitialLoad) setLoading(true);
         setError(null);
-        setRefreshing(true);
+        if (!isInitialLoad) setRefreshing(true);
 
         try {
             // Calculate date range
@@ -131,17 +131,17 @@ export default function AdminAnalytics() {
             console.error('Error fetching analytics data:', error);
             setError('Failed to load analytics data. Please try again.');
         } finally {
-            setLoading(false);
+            if (isInitialLoad) setLoading(false);
             setRefreshing(false);
         }
     };
 
     useEffect(() => {
-        fetchAnalyticsData();
+        fetchAnalyticsData(true);
 
         // Set up refresh interval - every 5 minutes
         const intervalId = setInterval(() => {
-            fetchAnalyticsData();
+            fetchAnalyticsData(false);
         }, 5 * 60 * 1000);
 
         return () => clearInterval(intervalId);
