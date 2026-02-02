@@ -19,9 +19,11 @@ export const SocketProvider = ({ children }) => {
         const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
         const socketInstance = io(socketUrl, {
-            transports: ['websocket'], // Prefer WebSocket transport
+            transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
             reconnectionAttempts: 5,
             reconnectionDelay: 1000,
+            timeout: 10000,
+            autoConnect: true,
         });
 
         socketInstance.on('connect', () => {
