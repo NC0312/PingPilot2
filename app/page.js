@@ -3,8 +3,14 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import Navbar from './components/Landing Page/Navbar'
-import PricingCard from './components/Landing Page/PricingCard'
+
+// Lazy load PricingCard for better performance
+const PricingCard = dynamic(() => import('./components/Landing Page/PricingCard'), {
+  loading: () => <div className="animate-pulse bg-gray-800 rounded-xl h-96"></div>,
+  ssr: true
+});
 
 const LandingPage = () => {
   const [showPricingPopup, setShowPricingPopup] = useState(false)
