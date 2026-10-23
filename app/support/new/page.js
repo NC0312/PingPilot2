@@ -2,11 +2,12 @@
 
 import React from 'react';
 import CreateTicketForm from '@/app/components/Support/CreateTicketForm';
+import { PageContainer } from '@/app/components/Layout/AppShell';
 
 export default function NewTicketPage() {
     return (
-        <div className="container mx-auto px-4 py-8">
+        <PageContainer>
             <CreateTicketForm />
-        </div>
+        </PageContainer>
     );
 }

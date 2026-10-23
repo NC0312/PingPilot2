@@ -3,6 +3,7 @@
 import { useAuth } from '../context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * A component to protect public routes (like landing page)
@@ -31,8 +32,8 @@ export default function PublicRoute({ children }) {
     // Show loading state while checking authentication
     if (loading || !isClient) {
         return (
-            <div className="flex items-center justify-center h-screen w-full bg-[#031D27]">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <div className="grid min-h-[100dvh] w-full place-items-center px-4" role="status" aria-label="Loading">
+                <Skeleton className="h-64 w-full max-w-md rounded-[1.75rem]" />
             </div>
         );
     }

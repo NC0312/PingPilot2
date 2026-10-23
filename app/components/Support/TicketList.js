@@ -1,15 +1,25 @@
 // app/components/Support/TicketList.js
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/app/context/AuthContext';
-import {
-    MessageSquare, Clock, AlertCircle, CheckCircle,
-    HelpCircle, CreditCard, Settings, RefreshCw
-} from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { ArrowsClockwise, ChatCircleDots, Plus, CaretRight } from '@phosphor-icons/react';
+import { useAuth } from '@/app/context/AuthContext';
+import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Alert } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Reveal } from '@/components/ui/reveal';
+import { timeAgo } from '@/lib/time';
+import { TicketStatusBadge, CategoryLabel } from './ticketMeta';
+
+const FILTERS = [
+    { key: 'all', label: 'All' },
+    { key: 'open', label: 'Open' },
+    { key: 'in_progress', label: 'In progress' },
+    { key: 'resolved', label: 'Resolved' },
+];
 
 const TicketList = () => {
     const [tickets, setTickets] = useState([]);
@@ -18,18 +28,14 @@ const TicketList = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     const [refreshing, setRefreshing] = useState(false);
 
-    const router = useRouter();
     const { apiRequest } = useAuth();
 
     const fetchTickets = async () => {
         try {
-            setLoading(true);
             setRefreshing(true);
+            setError(null);
 
-            const response = await apiRequest('/api/support/tickets', {
-                method: 'GET',
-                params: statusFilter !== 'all' ? { status: statusFilter } : {}
-            });
+            const response = await apiRequest('/api/support/tickets', { method: 'GET' });
 
             if (response.status === 'success') {
                 setTickets(response.data.tickets);
@@ -38,7 +44,7 @@ const TicketList = () => {
             }
         } catch (err) {
             console.error('Error fetching tickets:', err);
-            setError('Failed to load support tickets. Please try again.');
+            setError('We couldn’t load your tickets. Check your connection and try again.');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -47,182 +53,121 @@ const TicketList = () => {
 
     useEffect(() => {
         fetchTickets();
-    }, [statusFilter]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    const getCategoryIcon = (category) => {
-        switch (category) {
-            case 'technical':
-                return <Settings size={16} className="text-blue-400" />;
-            case 'billing':
-                return <CreditCard size={16} className="text-green-400" />;
-            case 'feature_request':
-                return <HelpCircle size={16} className="text-purple-400" />;
-            default:
-                return <MessageSquare size={16} className="text-gray-400" />;
-        }
-    };
-
-    const getStatusBadge = (status) => {
-        switch (status) {
-            case 'open':
-                return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-blue-900/50 text-blue-300 border border-blue-600/30">
-                        Open
-                    </span>
-                );
-            case 'in_progress':
-                return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-yellow-900/50 text-yellow-300 border border-yellow-600/30">
-                        In Progress
-                    </span>
-                );
-            case 'resolved':
-                return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-green-900/50 text-green-300 border border-green-600/30">
-                        Resolved
-                    </span>
-                );
-            case 'closed':
-                return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-gray-900/50 text-gray-300 border border-gray-600/30">
-                        Closed
-                    </span>
-                );
-            default:
-                return null;
-        }
-    };
+    // Filtering happens here: the list endpoint returns every ticket for the user.
+    const visible = useMemo(
+        () => (statusFilter === 'all' ? tickets : tickets.filter((t) => t.status === statusFilter)),
+        [tickets, statusFilter]
+    );
+    const count = (key) => (key === 'all' ? tickets.length : tickets.filter((t) => t.status === key).length);
 
     return (
-        <div className="bg-gray-800 rounded-lg p-6">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-white">Support Tickets</h2>
-                <div className="flex space-x-2">
-                    <div className="flex p-1 bg-gray-700 rounded-lg">
+        <div className="space-y-10">
+            <PageHeader
+                eyebrow="Support"
+                title="Your tickets"
+                description="Ask a question or report a problem. We reply on the ticket and you can follow the conversation here."
+                actions={
+                    <>
+                        <Button variant="outline" onClick={fetchTickets} disabled={refreshing}>
+                            <ArrowsClockwise weight="light" className={refreshing ? 'animate-spin' : ''} />
+                            Refresh
+                        </Button>
+                        <Button asChild>
+                            <Link href="/support/new">
+                                <Plus weight="light" />
+                                New ticket
+                            </Link>
+                        </Button>
+                    </>
+                }
+            />
+
+            <div role="group" aria-label="Filter by status" className="inline-flex max-w-full overflow-x-auto rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08]">
+                {FILTERS.map((f) => {
+                    const on = statusFilter === f.key;
+                    return (
                         <button
-                            onClick={() => setStatusFilter('all')}
-                            className={`px-3 py-1 text-sm rounded ${statusFilter === 'all' ? 'bg-blue-600 text-white' : 'text-gray-300'}`}
+                            key={f.key}
+                            type="button"
+                            aria-pressed={on}
+                            onClick={() => setStatusFilter(f.key)}
+                            className={`whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-medium transition-[background-color,color] duration-500 ease-fluid ${on ? 'bg-white/[0.1] text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
-                            All
+                            {f.label} <span className="ml-0.5 tabular-nums text-muted-foreground">{loading ? '' : count(f.key)}</span>
                         </button>
-                        <button
-                            onClick={() => setStatusFilter('open')}
-                            className={`px-3 py-1 text-sm rounded ${statusFilter === 'open' ? 'bg-blue-600 text-white' : 'text-gray-300'}`}
-                        >
-                            Open
-                        </button>
-                        <button
-                            onClick={() => setStatusFilter('in_progress')}
-                            className={`px-3 py-1 text-sm rounded ${statusFilter === 'in_progress' ? 'bg-blue-600 text-white' : 'text-gray-300'}`}
-                        >
-                            In Progress
-                        </button>
-                        <button
-                            onClick={() => setStatusFilter('resolved')}
-                            className={`px-3 py-1 text-sm rounded ${statusFilter === 'resolved' ? 'bg-blue-600 text-white' : 'text-gray-300'}`}
-                        >
-                            Resolved
-                        </button>
-                    </div>
-                    <button
-                        onClick={() => fetchTickets()}
-                        className="p-2 bg-gray-700 rounded-lg text-gray-300 hover:bg-gray-600"
-                        disabled={refreshing}
-                    >
-                        <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                    </button>
-                </div>
+                    );
+                })}
             </div>
 
-            {loading && !refreshing ? (
-                <div className="flex justify-center p-8">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-                </div>
-            ) : error ? (
-                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-4 text-center">
-                    <AlertCircle size={24} className="mx-auto text-red-400 mb-2" />
-                    <p className="text-red-200">{error}</p>
-                    <button
-                        onClick={fetchTickets}
-                        className="mt-4 px-4 py-2 bg-red-600/50 hover:bg-red-700 text-white rounded-lg"
-                    >
-                        Try Again
-                    </button>
-                </div>
-            ) : tickets.length === 0 ? (
-                <div className="text-center py-12">
-                    <MessageSquare size={48} className="mx-auto text-gray-500 mb-4" />
-                    <h3 className="text-xl font-medium text-gray-300 mb-2">No tickets found</h3>
-                    <p className="text-gray-400 mb-6">
-                        {statusFilter !== 'all'
-                            ? `You don't have any ${statusFilter} tickets`
-                            : "You haven't created any support tickets yet"}
-                    </p>
-                    <Link href="/support/new">
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-                        >
-                            Create New Ticket
-                        </motion.button>
-                    </Link>
-                </div>
-            ) : (
-                <div className="space-y-4">
-                    {tickets.map((ticket) => (
-                        <motion.div
-                            key={ticket._id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="bg-gray-700 rounded-lg p-4 hover:bg-gray-650 cursor-pointer"
-                            onClick={() => router.push(`/support/tickets/${ticket._id}`)}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div className="flex items-start">
-                                    <div className="p-2 bg-gray-600 rounded-lg mr-3">
-                                        {getCategoryIcon(ticket.category)}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-medium text-white">{ticket.subject}</h3>
-                                        <p className="text-sm text-gray-400 mt-1 line-clamp-1">
-                                            {ticket.description}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                    {getStatusBadge(ticket.status)}
-                                    <div className="flex items-center mt-2 text-xs text-gray-400">
-                                        <Clock size={12} className="mr-1" />
-                                        {new Date(ticket.updatedAt).toLocaleDateString()}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex justify-between items-center mt-4 text-xs">
-                                <div className="flex items-center text-gray-400">
-                                    <MessageSquare size={12} className="mr-1" />
-                                    {ticket.responses?.length || 0} responses
-                                </div>
-                                <div className="text-blue-400 hover:text-blue-300">
-                                    View Details →
-                                </div>
-                            </div>
-                        </motion.div>
-                    ))}
-
-                    <div className="flex justify-center mt-6">
-                        <Link href="/support/new">
-                            <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-                            >
-                                Create New Ticket
-                            </motion.button>
-                        </Link>
-                    </div>
-                </div>
+            {error && (
+                <Alert tone="error" title="Something went wrong" action={<Button size="sm" variant="outline" onClick={fetchTickets}>Try again</Button>}>
+                    {error}
+                </Alert>
             )}
+
+            <div className="bezel-sm">
+                <div className="bezel-sm-core overflow-hidden">
+                    {loading ? (
+                        <div className="space-y-px p-3" role="status" aria-label="Loading tickets">
+                            {[0, 1, 2].map((i) => (
+                                <Skeleton key={i} className="h-24 rounded-2xl" />
+                            ))}
+                        </div>
+                    ) : visible.length === 0 ? (
+                        <EmptyState
+                            icon={ChatCircleDots}
+                            title={tickets.length === 0 ? 'No tickets yet' : 'No tickets in this view'}
+                            description={
+                                tickets.length === 0
+                                    ? 'When you need a hand, open a ticket and we will reply here.'
+                                    : `You have no ${statusFilter.replace('_', ' ')} tickets right now.`
+                            }
+                            action={
+                                tickets.length === 0 ? (
+                                    <Button asChild>
+                                        <Link href="/support/new">
+                                            <Plus weight="light" />
+                                            Open a ticket
+                                        </Link>
+                                    </Button>
+                                ) : (
+                                    <Button variant="outline" onClick={() => setStatusFilter('all')}>Show all tickets</Button>
+                                )
+                            }
+                        />
+                    ) : (
+                        <ul className="divide-y divide-white/[0.05]">
+                            {visible.map((ticket, i) => (
+                                <Reveal as="li" key={ticket._id} delay={Math.min(i, 6) * 40}>
+                                    <Link
+                                        href={`/support/tickets/${ticket._id}`}
+                                        className="group flex items-start gap-4 px-5 py-5 transition-colors duration-300 ease-fluid hover:bg-white/[0.025] sm:items-center"
+                                    >
+                                        <div className="min-w-0 flex-1 space-y-1.5">
+                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                                                <h3 className="font-medium text-foreground">{ticket.subject}</h3>
+                                                <TicketStatusBadge status={ticket.status} />
+                                            </div>
+                                            <p className="line-clamp-1 text-sm text-muted-foreground">{ticket.description}</p>
+                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                                <CategoryLabel category={ticket.category} className="!text-xs" />
+                                                <span className="tabular-nums">
+                                                    {ticket.responses?.length || 0} {ticket.responses?.length === 1 ? 'reply' : 'replies'}
+                                                </span>
+                                                <span>Updated {timeAgo(ticket.updatedAt)}</span>
+                                            </div>
+                                        </div>
+                                        <CaretRight weight="light" className="mt-1 size-5 shrink-0 text-muted-foreground transition-transform duration-500 ease-fluid group-hover:translate-x-1 group-hover:text-foreground sm:mt-0" aria-hidden="true" />
+                                    </Link>
+                                </Reveal>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };

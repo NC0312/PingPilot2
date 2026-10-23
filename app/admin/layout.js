@@ -1,30 +1,26 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
-import SideBar from '@/app/components/Layout/SideBar';
-import { useState, useEffect } from 'react';
+import AppShell from '@/app/components/Layout/AppShell';
+import ProtectedRoute from '../components/ProtectedRoute';
 
+// Admin pages render their own PageHeader inside AppShell, like every other screen.
 export default function AdminLayout({ children }) {
-    const { user, isAdmin } = useAuth();
-    const [authorized, setAuthorized] = useState(false);
+    const { user, loading } = useAuth();
+    const router = useRouter();
 
+    // Signed-in non-admins are sent back to their dashboard instead of seeing pages that cannot load.
     useEffect(() => {
-        if (user && isAdmin()) {
-            setAuthorized(true);
+        if (!loading && user && user.role !== 'admin') {
+            router.replace('/dashboard');
         }
-    }, [user, isAdmin]);
+    }, [user, loading, router]);
 
     return (
-        <div className="flex">
-            <SideBar />
-            <div className="flex-1 md:ml-64 bg-[#031D27] min-h-screen">
-                <div className="py-4 px-4 md:px-10">
-                    <h1 className="text-2xl font-bold text-white mb-4">Admin Dashboard</h1>
-                    <div className="bg-gray-800 rounded-lg p-4">
-                        {children}
-                    </div>
-                </div>
-            </div>
-        </div>
+        <ProtectedRoute>
+            <AppShell>{user?.role === 'admin' ? children : null}</AppShell>
+        </ProtectedRoute>
     );
 }

@@ -1,25 +1,35 @@
-// Modified app/auth/page.js
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { Eye, EyeOff, Mail, Lock, User, Server, AlertTriangle, Check, AlertCircle } from 'lucide-react';
+import { Envelope, Lock, User } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 import Link from 'next/link';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
+import { Skeleton } from '@/components/ui/skeleton';
+import AuthShell, { AuthHeading } from './AuthShell';
+import { IconInput, PasswordInput, SubmitButton } from './AuthFields';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const ERROR_MESSAGES = {
-    'Email already in use': 'Email is already in use',
+    'Email already in use': 'That email is already registered. Sign in instead, or use a different address.',
     'No user found with this email': 'Invalid email or password',
     'Incorrect password': 'Invalid email or password',
     'email_not_verified': 'Please verify your email before logging in',
     default: 'Authentication failed'
 };
 
-export default function AuthPage() {
-    const [isLogin, setIsLogin] = useState(true);
-    const [showPassword, setShowPassword] = useState(false);
+const emailRules = {
+    required: 'Enter your email address',
+    pattern: { value: EMAIL_REGEX, message: 'Enter a valid email, like name@company.com' }
+};
+
+function AuthForm() {
+    const searchParams = useSearchParams();
+    const [isLogin, setIsLogin] = useState(searchParams.get('mode') !== 'signup');
     const [loading, setLoading] = useState(false);
     const [authError, setAuthError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
@@ -56,12 +66,15 @@ export default function AuthPage() {
 
     const passwordValue = watch('password', '');
 
-    const toggleFormMode = () => {
-        setIsLogin(!isLogin);
+    const setMode = (login) => {
+        if (login === isLogin) return;
+        setIsLogin(login);
         setAuthError(null);
         setSuccessMessage(null);
         setUnverifiedUser(null);
     };
+
+    const toggleFormMode = () => setMode(!isLogin);
 
     const handleAuthError = (error) => {
         if (error.message === 'email_not_verified') {
@@ -82,17 +95,17 @@ export default function AuthPage() {
             // If we have an unverified user, use that data
             if (unverifiedUser) {
                 await resendVerificationEmail();
-                setSuccessMessage('Verification email sent! Please check your inbox.');
+                setSuccessMessage('Verification email sent. Check your inbox.');
             } else {
                 // Otherwise, try to login without verification to get the user data
                 const values = getLoginValues();
                 await loginWithoutVerification(values.email, values.password);
                 await resendVerificationEmail();
-                setSuccessMessage('Verification email sent! Please check your inbox.');
+                setSuccessMessage('Verification email sent. Check your inbox.');
             }
         } catch (error) {
             console.error('Resend verification error:', error);
-            setAuthError('Failed to resend verification email. Please try again.');
+            setAuthError('We couldn’t resend the verification email. Please try again.');
         } finally {
             setResendingVerification(false);
         }
@@ -129,7 +142,7 @@ export default function AuthPage() {
         try {
             const userData = await signup(data.email, data.password, data.name);
             setUnverifiedUser(userData);
-            setSuccessMessage('Account created successfully! Please check your email to verify your account.');
+            setSuccessMessage('Account created. Check your email to verify your account.');
         } catch (error) {
             console.error('Registration error:', error);
             handleAuthError(error);
@@ -138,278 +151,193 @@ export default function AuthPage() {
         }
     };
 
-    const renderFormInput = (id, label, type, icon, register, errors, options = {}) => (
-        <div>
-            <label htmlFor={id} className="block mb-1 text-sm font-medium text-gray-300">
-                {label}
-            </label>
-            <div className="relative">
-                <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    {icon}
-                </div>
-                <input
-                    id={id}
-                    type={type === 'password' ? (showPassword ? 'text' : 'password') : type}
-                    className={`bg-gray-700 border ${errors[id.split('-').pop()] ? 'border-red-500' : 'border-gray-600'} 
-                    text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 p-2.5`}
-                    placeholder={options.placeholder}
-                    {...register(id.split('-').pop(), options.validation)}
-                />
-                {type === 'password' && (
-                    <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white"
-                        onClick={() => setShowPassword(!showPassword)}
-                    >
-                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                )}
-            </div>
-            {errors[id.split('-').pop()] && (
-                <p className="mt-1 text-sm text-red-500">{errors[id.split('-').pop()].message}</p>
-            )}
-        </div>
-    );
+    const showVerifyNotice = authError === ERROR_MESSAGES['email_not_verified'] || (unverifiedUser && !authError);
 
-    const renderButton = (text, loadingText) => (
-        <button
-            type="submit"
-            disabled={loading}
-            className={`w-full ${loading ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} 
-            focus:ring-4 focus:ring-blue-900 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center transition-colors`}
+    const verificationNotice = (
+        <Alert
+            tone="info"
+            title="Verify your email to continue"
+            action={
+                <Button type="button" size="sm" variant="outline" onClick={resendVerification} disabled={resendingVerification}>
+                    {resendingVerification ? 'Sending' : 'Resend verification email'}
+                </Button>
+            }
         >
-            {loading ? (
-                <div className="flex justify-center items-center">
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    {loadingText}
-                </div>
-            ) : (
-                text
-            )}
-        </button>
+            We sent a link to your inbox. Open it, then sign in.
+        </Alert>
     );
 
-    // Render verification notification
-    const renderVerificationNotification = () => (
-        <div className="bg-blue-900/30 border border-blue-600/50 rounded-lg p-3 mb-4">
-            <div className="flex items-start">
-                <AlertCircle className="text-blue-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                <div className="text-blue-200 text-sm">
-                    <p className="mb-2">Please verify your email address before logging in. Check your inbox for the verification link.</p>
-                    <button
-                        onClick={resendVerification}
-                        disabled={resendingVerification}
-                        className={`w-full ${resendingVerification ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-700'} 
-                        text-white font-medium rounded-lg text-xs px-3 py-1.5 text-center transition-colors mt-1`}
-                    >
-                        {resendingVerification ? (
-                            <div className="flex justify-center items-center">
-                                <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Sending...
-                            </div>
-                        ) : (
-                            'Resend Verification Email'
-                        )}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+    const field = (errors, name) => ({
+        'aria-invalid': errors[name] ? true : undefined,
+        'aria-describedby': errors[name] ? `${isLogin ? 'login' : 'register'}-${name}-msg` : undefined,
+    });
 
     return (
-        <div className="min-h-screen w-full flex flex-col justify-center items-center bg-[#031D27] px-4 py-12">
-            <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
-                <Server size={28} className="text-white" />
+        <AuthShell>
+            <AuthHeading
+                title={isLogin ? 'Sign in' : 'Create your account'}
+                description={isLogin ? 'Welcome back. Pick up where you left off.' : 'Start your free trial. No setup needed.'}
+            />
+
+            <div
+                role="tablist"
+                aria-label="Account"
+                className="mt-6 grid grid-cols-2 rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08]"
+            >
+                {[
+                    { id: 'login', label: 'Sign in', on: isLogin },
+                    { id: 'register', label: 'Sign up', on: !isLogin },
+                ].map((t) => (
+                    <button
+                        key={t.id}
+                        type="button"
+                        role="tab"
+                        id={`tab-${t.id}`}
+                        aria-selected={t.on}
+                        aria-controls="auth-panel"
+                        onClick={() => setMode(t.id === 'login')}
+                        className={`min-h-10 rounded-full px-4 text-sm font-medium transition-[background-color,color] duration-500 ease-fluid ${t.on ? 'bg-white/[0.1] text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Ping Pilot</h1>
-            <p className="text-blue-300 mb-8">Server monitoring made simple</p>
 
-            <div className="bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-8">
-                <div className="flex justify-center mb-6">
-                    <div className="flex p-1 rounded-lg bg-gray-700">
-                        <button
-                            type="button"
-                            onClick={() => setIsLogin(true)}
-                            className={`py-2 px-4 rounded-md transition-colors ${isLogin ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}
-                        >
-                            Login
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setIsLogin(false)}
-                            className={`py-2 px-4 rounded-md transition-colors ${!isLogin ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}
-                        >
-                            Sign Up
-                        </button>
-                    </div>
-                </div>
+            <div id="auth-panel" role="tabpanel" aria-labelledby={isLogin ? 'tab-login' : 'tab-register'} className="mt-6 space-y-5">
+                {showVerifyNotice ? (
+                    verificationNotice
+                ) : authError ? (
+                    <Alert tone="error" title={authError} />
+                ) : null}
 
-                <h2 className="text-xl font-semibold text-white mb-6">
-                    {isLogin ? 'Sign in to your account' : 'Create your account'}
-                </h2>
-
-                {authError && authError === ERROR_MESSAGES['email_not_verified'] ? (
-                    renderVerificationNotification()
-                ) : authError && (
-                    <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4 flex items-start">
-                        <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                        <p className="text-red-200 text-sm">{authError}</p>
-                    </div>
-                )}
-
-                {successMessage && (
-                    <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-3 mb-4 flex items-start">
-                        <Check className="text-green-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                        <p className="text-green-200 text-sm">{successMessage}</p>
-                    </div>
-                )}
-
-                {unverifiedUser && !authError && (
-                    renderVerificationNotification()
-                )}
+                {successMessage && <Alert tone="success">{successMessage}</Alert>}
 
                 {isLogin ? (
-                    <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4">
-                        {renderFormInput(
-                            'login-email',
-                            'Email',
-                            'email',
-                            <Mail className="h-5 w-5 text-gray-400" />,
-                            loginRegister,
-                            loginErrors,
-                            {
-                                placeholder: 'name@company.com',
-                                validation: {
-                                    required: 'Email is required',
-                                    pattern: {
-                                        value: EMAIL_REGEX,
-                                        message: 'Invalid email format'
-                                    }
-                                }
-                            }
-                        )}
+                    <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-5" noValidate>
+                        <Field id="login-email" label="Email" error={loginErrors.email?.message}>
+                            <IconInput
+                                id="login-email"
+                                icon={Envelope}
+                                type="email"
+                                autoComplete="email"
+                                inputMode="email"
+                                placeholder="name@company.com"
+                                {...field(loginErrors, 'email')}
+                                {...loginRegister('email', emailRules)}
+                            />
+                        </Field>
 
-                        {renderFormInput(
-                            'login-password',
-                            'Password',
-                            'password',
-                            <Lock className="h-5 w-5 text-gray-400" />,
-                            loginRegister,
-                            loginErrors,
-                            {
-                                placeholder: '••••••••',
-                                validation: {
-                                    required: 'Password is required'
-                                }
-                            }
-                        )}
+                        <Field id="login-password" label="Password" error={loginErrors.password?.message}>
+                            <PasswordInput
+                                id="login-password"
+                                icon={Lock}
+                                autoComplete="current-password"
+                                placeholder="Your password"
+                                {...field(loginErrors, 'password')}
+                                {...loginRegister('password', { required: 'Enter your password' })}
+                            />
+                        </Field>
 
-                        <div className="flex items-center justify-end">
-                            <Link href="/auth/forgot-password" className="text-sm text-blue-400 hover:underline">
+                        <div className="flex justify-end">
+                            <Link href="/auth/forgot-password" className="rounded-sm text-sm text-primary underline-offset-4 hover:underline">
                                 Forgot password?
                             </Link>
                         </div>
 
-                        {renderButton('Sign In', 'Signing In...')}
+                        <SubmitButton loading={loading} loadingText="Signing in">Sign in</SubmitButton>
                     </form>
                 ) : (
-                    <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
-                        {renderFormInput(
-                            'register-name',
-                            'Name',
-                            'text',
-                            <User className="h-5 w-5 text-gray-400" />,
-                            registerRegister,
-                            registerErrors,
-                            {
-                                placeholder: 'Your name',
-                                validation: {
-                                    required: 'Name is required',
-                                    minLength: {
-                                        value: 2,
-                                        message: 'Name must be at least 2 characters'
-                                    }
-                                }
-                            }
-                        )}
+                    <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-5" noValidate>
+                        <Field id="register-name" label="Name" error={registerErrors.name?.message}>
+                            <IconInput
+                                id="register-name"
+                                icon={User}
+                                type="text"
+                                autoComplete="name"
+                                placeholder="Your name"
+                                {...field(registerErrors, 'name')}
+                                {...registerRegister('name', {
+                                    required: 'Enter your name',
+                                    minLength: { value: 2, message: 'Name must be at least 2 characters' }
+                                })}
+                            />
+                        </Field>
 
-                        {renderFormInput(
-                            'register-email',
-                            'Email',
-                            'email',
-                            <Mail className="h-5 w-5 text-gray-400" />,
-                            registerRegister,
-                            registerErrors,
-                            {
-                                placeholder: 'name@company.com',
-                                validation: {
-                                    required: 'Email is required',
-                                    pattern: {
-                                        value: EMAIL_REGEX,
-                                        message: 'Invalid email format'
-                                    }
-                                }
-                            }
-                        )}
+                        <Field id="register-email" label="Email" error={registerErrors.email?.message}>
+                            <IconInput
+                                id="register-email"
+                                icon={Envelope}
+                                type="email"
+                                autoComplete="email"
+                                inputMode="email"
+                                placeholder="name@company.com"
+                                {...field(registerErrors, 'email')}
+                                {...registerRegister('email', emailRules)}
+                            />
+                        </Field>
 
-                        {renderFormInput(
-                            'register-password',
-                            'Password',
-                            'password',
-                            <Lock className="h-5 w-5 text-gray-400" />,
-                            registerRegister,
-                            registerErrors,
-                            {
-                                placeholder: '••••••••',
-                                validation: {
-                                    required: 'Password is required',
-                                    minLength: {
-                                        value: 6,
-                                        message: 'Password must be at least 6 characters'
-                                    }
-                                }
-                            }
-                        )}
+                        <Field
+                            id="register-password"
+                            label="Password"
+                            hint="At least 6 characters."
+                            error={registerErrors.password?.message}
+                        >
+                            <PasswordInput
+                                id="register-password"
+                                icon={Lock}
+                                autoComplete="new-password"
+                                placeholder="Create a password"
+                                {...field(registerErrors, 'password')}
+                                {...registerRegister('password', {
+                                    required: 'Create a password',
+                                    minLength: { value: 6, message: 'Password must be at least 6 characters' }
+                                })}
+                            />
+                        </Field>
 
-                        {renderFormInput(
-                            'register-confirmPassword',
-                            'Confirm Password',
-                            'password',
-                            <Lock className="h-5 w-5 text-gray-400" />,
-                            registerRegister,
-                            registerErrors,
-                            {
-                                placeholder: '••••••••',
-                                validation: {
-                                    required: 'Please confirm your password',
+                        <Field id="register-confirmPassword" label="Confirm password" error={registerErrors.confirmPassword?.message}>
+                            <PasswordInput
+                                id="register-confirmPassword"
+                                icon={Lock}
+                                autoComplete="new-password"
+                                placeholder="Repeat your password"
+                                {...field(registerErrors, 'confirmPassword')}
+                                {...registerRegister('confirmPassword', {
+                                    required: 'Confirm your password',
                                     validate: value => value === passwordValue || 'Passwords do not match'
-                                }
-                            }
-                        )}
+                                })}
+                            />
+                        </Field>
 
-                        {renderButton('Create Account', 'Creating Account...')}
+                        <SubmitButton loading={loading} loadingText="Creating account">Create account</SubmitButton>
                     </form>
                 )}
-
-                <div className="mt-6 text-center">
-                    <p className="text-sm text-gray-400">
-                        {isLogin ? "Don't have an account? " : "Already have an account? "}
-                        <button
-                            type="button"
-                            onClick={toggleFormMode}
-                            className="text-blue-400 hover:underline focus:outline-none"
-                        >
-                            {isLogin ? 'Sign up' : 'Sign in'}
-                        </button>
-                    </p>
-                </div>
             </div>
-        </div>
+
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+                {isLogin ? 'New to Ping Pilott? ' : 'Already have an account? '}
+                <button
+                    type="button"
+                    onClick={toggleFormMode}
+                    className="rounded-sm text-primary underline-offset-4 hover:underline"
+                >
+                    {isLogin ? 'Create an account' : 'Sign in'}
+                </button>
+            </p>
+        </AuthShell>
+    );
+}
+
+export default function AuthPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="grid min-h-[100dvh] place-items-center px-4">
+                    <Skeleton className="h-[34rem] w-full max-w-md rounded-[1.75rem]" />
+                </div>
+            }
+        >
+            <AuthForm />
+        </Suspense>
     );
 }

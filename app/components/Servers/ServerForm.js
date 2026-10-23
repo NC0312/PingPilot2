@@ -1,97 +1,122 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AlertTriangle, Globe, Server as ServerIcon, HardDrive, Database, Info, Clock } from 'lucide-react';
-// Priority options
+import Link from 'next/link';
+import { Globe, HardDrives, Plugs, Database, CircleNotch } from '@phosphor-icons/react';
+import { Button, ButtonArrow } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
+
 const priorityOptions = [
-    { id: 'high', name: 'High Priority', color: 'text-red-400', description: 'Faster checks, immediate alerts' },
-    { id: 'medium', name: 'Medium Priority', color: 'text-yellow-400', description: 'Standard checking interval' },
-    { id: 'low', name: 'Low Priority', color: 'text-blue-400', description: 'Slower checks, saves resources' }
+    { id: 'high', name: 'High', dot: 'bg-destructive', description: 'Faster checks, immediate alerts' },
+    { id: 'medium', name: 'Medium', dot: 'bg-warning', description: 'Standard checking interval' },
+    { id: 'low', name: 'Low', dot: 'bg-primary', description: 'Slower checks, saves resources' },
 ];
 
-// Component for displaying plan limits info
+const serverTypes = [
+    { id: 'website', name: 'Website', icon: Globe },
+    { id: 'api', name: 'API endpoint', icon: HardDrives },
+    { id: 'tcp', name: 'TCP service', icon: Plugs },
+    { id: 'database', name: 'Database', icon: Database },
+];
+
+// Plan and slot status shown above the form when adding a server.
 const PlanLimitInfo = ({ userPlan, serverCount, maxServers }) => {
     if (userPlan === 'free') {
         return (
-            <div className="bg-blue-900/30 border border-blue-600/50 rounded-lg p-3 mb-4">
-                <div className="flex items-start">
-                    <Info className="text-blue-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                    <div className="text-blue-200 text-sm">
-                        <p className="font-medium mb-1">Free Trial Period</p>
-                        <p>Each server you add has a 2-day free trial period. After that, you'll need to upgrade to a paid plan to continue monitoring.</p>
-                    </div>
-                </div>
-            </div>
-        );
-    } else if (serverCount >= maxServers) {
-        return (
-            <div className="bg-yellow-900/30 border border-yellow-600/50 rounded-lg p-3 mb-4">
-                <div className="flex items-start">
-                    <AlertTriangle className="text-yellow-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                    <div className="text-yellow-200 text-sm">
-                        <p className="font-medium mb-1">Server Limit Reached</p>
-                        <p>You've reached the maximum number of servers allowed on your current plan ({maxServers}). Upgrade your plan to add more servers.</p>
-                    </div>
-                </div>
-            </div>
-        );
-    } else {
-        return (
-            <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-3 mb-4">
-                <div className="flex items-start">
-                    <Info className="text-green-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                    <div className="text-green-200 text-sm">
-                        <p className="font-medium mb-1">{userPlan.charAt(0).toUpperCase() + userPlan.slice(1)} Plan</p>
-                        <p>You have used {serverCount} of {maxServers} available server slots on your current plan.</p>
-                    </div>
-                </div>
-            </div>
+            <Alert tone="info" title="Free trial">
+                Each server you add has a 2-day free trial. After that, upgrade to a paid plan to keep monitoring.
+            </Alert>
         );
     }
+    if (serverCount >= maxServers) {
+        return (
+            <Alert tone="warning" title="Server limit reached">
+                Your plan allows {maxServers} servers. Upgrade your plan to add more.
+            </Alert>
+        );
+    }
+    const plan = userPlan.charAt(0).toUpperCase() + userPlan.slice(1);
+    return (
+        <Alert tone="success" title={`${plan.replace('_', ' ')} plan`}>
+            {Number.isFinite(maxServers) ? `You have used ${serverCount} of ${maxServers} server slots.` : `You have ${serverCount} ${serverCount === 1 ? 'server' : 'servers'}. Your plan has no server limit.`}
+        </Alert>
+    );
 };
 
-export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, maxServers, initialData = {} }) => {
+// Radio group rendered as selectable tiles. The native radio stays in the DOM for keyboard and screen readers.
+function ChoiceGroup({ legend, name, value, onChange, disabled, options, columns, children }) {
+    return (
+        <fieldset disabled={disabled} className="min-w-0 space-y-2.5">
+            <legend className="text-sm font-medium text-foreground/90">{legend}</legend>
+            <div className={cn('grid gap-2.5', columns)}>
+                {options.map((opt) => (
+                    <label
+                        key={opt.id}
+                        className={cn(
+                            'group relative flex min-h-12 cursor-pointer items-center rounded-2xl bg-white/[0.03] px-4 py-3 ring-1 ring-white/10 transition-[background-color,box-shadow] duration-500 ease-fluid',
+                            'hover:bg-white/[0.06] hover:ring-white/20',
+                            'has-[:checked]:bg-primary/10 has-[:checked]:ring-2 has-[:checked]:ring-primary/60',
+                            'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring',
+                            disabled && 'cursor-not-allowed opacity-50'
+                        )}
+                    >
+                        <input
+                            type="radio"
+                            name={name}
+                            value={opt.id}
+                            checked={value === opt.id}
+                            onChange={() => onChange(opt.id)}
+                            className="sr-only"
+                        />
+                        {children(opt)}
+                    </label>
+                ))}
+            </div>
+        </fieldset>
+    );
+}
+
+export const ServerForm = ({
+    onSubmit,
+    loading,
+    error,
+    userPlan,
+    serverCount,
+    maxServers,
+    initialData = {},
+    isEdit = false,
+    submitLabel,
+    cancelHref,
+}) => {
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         url: initialData?.url || '',
         type: initialData?.type || 'website',
         description: initialData?.description || '',
-        priority: initialData?.priority || 'medium'
+        priority: initialData?.priority || 'medium',
     });
 
     const [validationErrors, setValidationErrors] = useState({});
 
-    // Server type options
-    const serverTypes = [
-        { id: 'website', name: 'Website', icon: Globe },
-        { id: 'api', name: 'API Endpoint', icon: ServerIcon },
-        { id: 'tcp', name: 'TCP Service', icon: HardDrive },
-        { id: 'database', name: 'Database', icon: Database }
-    ];
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
-
+    const setField = (name, value) => {
+        setFormData((prev) => ({ ...prev, [name]: value }));
         // Clear validation error when field is edited
         if (validationErrors[name]) {
-            setValidationErrors(prev => ({
-                ...prev,
-                [name]: null
-            }));
+            setValidationErrors((prev) => ({ ...prev, [name]: null }));
         }
     };
+
+    const handleChange = (e) => setField(e.target.name, e.target.value);
 
     const validateUrl = (url) => {
         // Allow TCP format like 123.123.123.123:8080
         if (formData.type === 'tcp') {
-            const tcpRegex = /^[\w.-]+(?::\d+)?$/;
-            return tcpRegex.test(url);
+            return /^[\w.-]+(?::\d+)?$/.test(url);
         }
-
         // For websites and APIs, require http(s)://
         try {
             new URL(url);
@@ -105,17 +130,16 @@ export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, ma
         const errors = {};
 
         if (!formData.name.trim()) {
-            errors.name = 'Server name is required';
+            errors.name = 'Enter a name for this server.';
         }
 
         if (!formData.url.trim()) {
-            errors.url = 'URL or address is required';
+            errors.url = 'Enter a URL or address to monitor.';
         } else if (!validateUrl(formData.url)) {
-            if (formData.type === 'tcp') {
-                errors.url = 'Invalid format. Use host:port (e.g., db.example.com:5432)';
-            } else {
-                errors.url = 'Invalid URL. Include http:// or https://';
-            }
+            errors.url =
+                formData.type === 'tcp'
+                    ? 'Use the host:port format, for example db.example.com:5432.'
+                    : 'Enter a full URL that starts with http:// or https://.';
         }
 
         setValidationErrors(errors);
@@ -124,183 +148,141 @@ export const ServerForm = ({ onSubmit, loading, error, userPlan, serverCount, ma
 
     const handleSubmit = (e) => {
         e.preventDefault();
-
         if (validateForm()) {
             onSubmit(formData);
         }
     };
 
     // Disable form if server limit is reached for non-admin users
-    const isFormDisabled = userPlan !== 'admin' && serverCount >= maxServers;
+    const isFormDisabled = !isEdit && userPlan !== 'admin' && serverCount >= maxServers;
+    const locked = isFormDisabled || loading;
 
     return (
-        <div className="bg-gray-800 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-white mb-6">Server Details</h2>
-
-            <PlanLimitInfo
-                userPlan={userPlan}
-                serverCount={serverCount}
-                maxServers={maxServers}
-            />
-
-            {error && (
-                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4 flex items-start">
-                    <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                    <p className="text-red-200 text-sm">{error}</p>
-                </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
-                <div className="mb-4">
-                    <label htmlFor="name" className="block mb-2 text-sm font-medium text-gray-300">
-                        Server Name
-                    </label>
-                    <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        disabled={isFormDisabled || loading}
-                        className={`bg-gray-700 border ${validationErrors.name ? 'border-red-500' : 'border-gray-600'
-                            } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5`}
-                        placeholder="My Production Server"
-                    />
-                    {validationErrors.name && (
-                        <p className="mt-1 text-xs text-red-400">{validationErrors.name}</p>
-                    )}
+        <form onSubmit={handleSubmit} noValidate className="bezel-sm" aria-label={isEdit ? 'General settings' : 'Server details'}>
+            <div className="bezel-sm-core space-y-7 p-6 sm:p-8">
+                <div className="space-y-1.5">
+                    <h2 className="font-display text-xl font-medium tracking-tight">{isEdit ? 'General' : 'Server details'}</h2>
+                    <p className="text-sm text-muted-foreground">
+                        {isEdit ? 'Name, address and priority for this monitor.' : 'What should Ping Pilott check?'}
+                    </p>
                 </div>
 
-                <div className="mb-4">
-                    <label htmlFor="url" className="block mb-2 text-sm font-medium text-gray-300">
-                        URL or Address
-                    </label>
-                    <input
-                        type="text"
+                {!isEdit && userPlan && <PlanLimitInfo userPlan={userPlan} serverCount={serverCount} maxServers={maxServers} />}
+                {error && <Alert tone="error" title="We couldn’t add this server">{error}</Alert>}
+
+                <div className="grid gap-6 md:grid-cols-2">
+                    <Field id="name" label="Server name" error={validationErrors.name}>
+                        <Input
+                            id="name"
+                            name="name"
+                            value={formData.name}
+                            onChange={handleChange}
+                            disabled={locked}
+                            placeholder="Production API"
+                            aria-invalid={!!validationErrors.name}
+                            aria-describedby={validationErrors.name ? 'name-msg' : undefined}
+                            autoComplete="off"
+                        />
+                    </Field>
+
+                    <Field
                         id="url"
-                        name="url"
-                        value={formData.url}
-                        onChange={handleChange}
-                        disabled={isFormDisabled || loading}
-                        className={`bg-gray-700 border ${validationErrors.url ? 'border-red-500' : 'border-gray-600'
-                            } text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5`}
-                        placeholder={
-                            formData.type === 'tcp'
-                                ? 'host:port (e.g., db.example.com:5432)'
-                                : 'https://example.com'
-                        }
-                    />
-                    {validationErrors.url && (
-                        <p className="mt-1 text-xs text-red-400">{validationErrors.url}</p>
+                        label="URL or address"
+                        error={validationErrors.url}
+                        hint={formData.type === 'tcp' ? 'Host and port, no protocol.' : 'Include https:// or http://.'}
+                    >
+                        <Input
+                            id="url"
+                            name="url"
+                            value={formData.url}
+                            onChange={handleChange}
+                            disabled={locked}
+                            placeholder={formData.type === 'tcp' ? 'db.example.com:5432' : 'https://example.com'}
+                            aria-invalid={!!validationErrors.url}
+                            aria-describedby="url-msg"
+                            className="font-mono text-[13px]"
+                            inputMode="url"
+                            autoComplete="off"
+                            spellCheck={false}
+                        />
+                    </Field>
+                </div>
+
+                <ChoiceGroup
+                    legend="Server type"
+                    name="type"
+                    value={formData.type}
+                    onChange={(v) => setField('type', v)}
+                    disabled={locked}
+                    options={serverTypes}
+                    columns="grid-cols-2 sm:grid-cols-4"
+                >
+                    {(type) => {
+                        const TypeIcon = type.icon;
+                        return (
+                            <span className="flex items-center gap-2.5 text-sm font-medium">
+                                <TypeIcon weight="light" className="size-5 shrink-0 text-muted-foreground transition-colors duration-500 ease-fluid group-has-[:checked]:text-primary" />
+                                {type.name}
+                            </span>
+                        );
+                    }}
+                </ChoiceGroup>
+
+                <ChoiceGroup
+                    legend="Monitoring priority"
+                    name="priority"
+                    value={formData.priority}
+                    onChange={(v) => setField('priority', v)}
+                    disabled={locked}
+                    options={priorityOptions}
+                    columns="grid-cols-1 md:grid-cols-3"
+                >
+                    {(option) => (
+                        <span className="flex flex-col gap-1">
+                            <span className="flex items-center gap-2 text-sm font-medium">
+                                <span className={cn('size-2 rounded-full', option.dot)} aria-hidden="true" />
+                                {option.name}
+                            </span>
+                            <span className="text-xs leading-snug text-muted-foreground">{option.description}</span>
+                        </span>
                     )}
-                </div>
+                </ChoiceGroup>
 
-                <div className="mb-6">
-                    <label className="block mb-2 text-sm font-medium text-gray-300">
-                        Monitoring Priority
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {priorityOptions.map((option) => (
-                            <div
-                                key={option.id}
-                                onClick={() => {
-                                    if (!isFormDisabled && !loading) {
-                                        handleChange({
-                                            target: { name: 'priority', value: option.id }
-                                        });
-                                    }
-                                }}
-                                className={`
-                                    border rounded-lg p-3 cursor-pointer transition-all
-                                    ${formData.priority === option.id
-                                        ? 'bg-blue-900/30 border-blue-500 ring-1 ring-blue-500'
-                                        : 'bg-gray-700/50 border-gray-600 hover:bg-gray-700 hover:border-gray-500'}
-                                    ${isFormDisabled || loading ? 'opacity-50 cursor-not-allowed' : ''}
-                                `}
-                            >
-                                <div className="flex items-center mb-1">
-                                    <div className={`w-3 h-3 rounded-full mr-2 ${option.id === 'high' ? 'bg-red-500' :
-                                            option.id === 'medium' ? 'bg-yellow-500' : 'bg-blue-500'
-                                        }`}></div>
-                                    <span className="font-medium text-white text-sm">{option.name}</span>
-                                </div>
-                                <p className="text-xs text-gray-400 pl-5">{option.description}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="mb-4">
-                    <label className="block mb-2 text-sm font-medium text-gray-300">
-                        Server Type
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {serverTypes.map((type) => {
-                            const TypeIcon = type.icon;
-                            return (
-                                <div
-                                    key={type.id}
-                                    onClick={() => {
-                                        if (!isFormDisabled && !loading) {
-                                            handleChange({
-                                                target: { name: 'type', value: type.id }
-                                            });
-                                        }
-                                    }}
-                                    className={`
-                                        flex items-center justify-center rounded-lg px-3 py-2 cursor-pointer
-                                        ${isFormDisabled || loading ? 'opacity-50 cursor-not-allowed' : ''}
-                                        ${formData.type === type.id
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}
-                                    `}
-                                >
-                                    <TypeIcon size={16} className="mr-2" />
-                                    <span>{type.name}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                <div className="mb-4">
-                    <label htmlFor="description" className="block mb-2 text-sm font-medium text-gray-300">
-                        Description (Optional)
-                    </label>
-                    <textarea
+                <Field id="description" label="Description" optional>
+                    <Textarea
                         id="description"
                         name="description"
                         value={formData.description}
                         onChange={handleChange}
-                        disabled={isFormDisabled || loading}
-                        rows="3"
-                        className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                        placeholder="Add details about this server..."
-                    ></textarea>
-                </div>
+                        disabled={locked}
+                        rows={3}
+                        placeholder="What does this server do, and who owns it?"
+                    />
+                </Field>
 
-                <div className="flex justify-end">
-                    <button
-                        type="submit"
-                        disabled={isFormDisabled || loading}
-                        className={`${isFormDisabled
-                            ? 'bg-gray-600 cursor-not-allowed'
-                            : loading
-                                ? 'bg-blue-800'
-                                : 'bg-blue-600 hover:bg-blue-700'
-                            } text-white font-medium rounded-lg text-sm px-5 py-2.5 transition-colors flex items-center`}
-                    >
+                <div className="flex flex-col-reverse gap-3 border-t border-white/[0.07] pt-6 sm:flex-row sm:items-center sm:justify-between">
+                    {cancelHref ? (
+                        <Button asChild variant="ghost" className="sm:w-auto">
+                            <Link href={cancelHref}>Cancel</Link>
+                        </Button>
+                    ) : (
+                        <span />
+                    )}
+                    <Button type="submit" size="lg" disabled={locked} className={isEdit ? '' : 'justify-between pl-7'}>
                         {loading ? (
                             <>
-                                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                                Processing...
+                                <CircleNotch weight="light" className="animate-spin" />
+                                {isEdit ? 'Saving' : 'Processing'}
                             </>
                         ) : (
-                            'Continue'
+                            <>
+                                {submitLabel || (isEdit ? 'Save changes' : 'Continue')}
+                                {!isEdit && <ButtonArrow />}
+                            </>
                         )}
-                    </button>
+                    </Button>
                 </div>
-            </form>
-        </div>
+            </div>
+        </form>
     );
 };

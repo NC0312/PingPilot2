@@ -1,78 +1,70 @@
 'use client'
 import React from 'react'
-import { motion } from 'framer-motion'
+import Link from 'next/link'
+import { Check, Minus } from '@phosphor-icons/react'
+import { Button, ButtonArrow } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
-const PricingCard = ({ plan, cardVariants }) => {
-    const { title, price, period, description, features, buttonText, buttonAction, buttonStyle, tag } = plan
-
-    // Define border and button styles based on plan type
-    const getBorderStyle = () => {
-        if (tag && tag.color === 'blue') {
-            return 'border-blue-600'
-        }
-        return 'border-gray-700'
-    }
-
-    const getButtonStyle = () => {
-        if (buttonStyle === 'blue') {
-            return 'text-white bg-blue-600 hover:bg-blue-700'
-        }
-        return 'text-gray-300 border border-gray-600 hover:bg-gray-700'
-    }
+// Plan card. Featured plans get the accent bezel; CTAs are pinned to the bottom edge
+// so every card ends on the same line regardless of copy length.
+const PricingCard = ({ plan }) => {
+    const { title, price, period, description, features, buttonText, href, featured, tag } = plan
 
     return (
-        <motion.div
-            variants={cardVariants}
-            whileHover={{
-                y: -5,
-                scale: 1.02,
-                boxShadow: "0 10px 20px rgba(0,0,0,0.2)",
-                borderColor: "#3b82f6",
-                transition: {
-                    type: "spring",
-                    stiffness: 400,
-                    damping: 10
-                }
-            }}
-            className={`bg-gray-800 rounded-xl p-4 md:p-6 border ${getBorderStyle()} transition-all flex flex-col relative overflow-hidden`}
-        >
-            {tag && (
-                <div className={`absolute top-0 right-0 bg-${tag.color}-600 text-white px-4 py-1 font-mono text-xs`}>
-                    {tag.text}
-                </div>
+        <div
+            className={cn(
+                'group h-full rounded-[1.75rem] p-1.5 transition-transform duration-700 ease-fluid hover:-translate-y-1',
+                featured
+                    ? 'bg-primary/[0.08] ring-1 ring-primary/35 shadow-[0_30px_70px_-34px_oklch(0.7_0.13_220/0.7)]'
+                    : 'bg-white/[0.03] ring-1 ring-white/[0.07]'
             )}
+        >
+            <div className="flex h-full flex-col rounded-[calc(1.75rem-0.375rem)] bg-card p-6 shadow-[inset_0_1px_1px_oklch(1_0_0/0.07)]">
+                <div className="flex h-6 items-center justify-between">
+                    <h3 className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{title}</h3>
+                    {tag && (
+                        <span className={cn(
+                            'rounded-md px-2 py-0.5 text-[11px] font-medium ring-1',
+                            featured ? 'bg-primary/15 text-primary ring-primary/30' : 'bg-success/10 text-success ring-success/25'
+                        )}>
+                            {tag}
+                        </span>
+                    )}
+                </div>
 
-            <div className='mb-6'>
-                <h3 className='font-mono text-xl font-bold text-gray-300 mb-2'>{title}</h3>
-                <p className='font-mono text-3xl font-bold text-gray-300 mb-2'>{price}</p>
-                <p className='font-mono text-sm text-gray-400'>{period}</p>
-            </div>
+                <div className="mt-6 h-[4.5rem]">
+                    <p className="font-display text-5xl font-medium tracking-tight tabular-nums">{price}</p>
+                    <p className="mt-1 text-[13px] text-muted-foreground">{period}</p>
+                </div>
 
-            <div className='mb-6 flex-grow'>
-                <p className='font-mono text-gray-400 mb-4'>{description}</p>
-                <ul className='space-y-3'>
-                    {features.map((feature, index) => (
-                        <li key={index} className='flex items-center'>
-                            <span className={feature.included ? 'text-green-400 mr-2' : 'text-red-400 mr-2'}>
-                                {feature.included ? '✓' : '✗'}
-                            </span>
-                            <span className={`font-mono ${feature.included ? 'text-gray-300' : 'text-gray-400'}`}>
-                                {feature.text}
-                            </span>
+                <p className="mt-5 min-h-10 text-sm leading-relaxed text-muted-foreground">{description}</p>
+
+                <ul className="mt-6 flex-1 space-y-3 border-t border-white/[0.07] pt-6">
+                    {features.map((f) => (
+                        <li key={f.text} className="flex items-start gap-3 text-sm">
+                            {f.included ? (
+                                <Check weight="light" className="mt-0.5 size-4 shrink-0 text-primary" aria-label="Included" />
+                            ) : (
+                                <Minus weight="light" className="mt-0.5 size-4 shrink-0 text-muted-foreground/50" aria-label="Not included" />
+                            )}
+                            <span className={f.included ? 'text-foreground/90' : 'text-muted-foreground/60'}>{f.text}</span>
                         </li>
                     ))}
                 </ul>
-            </div>
 
-            <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={buttonAction}
-                className={`w-full px-4 py-3 font-mono rounded-lg transition-colors ${getButtonStyle()}`}
-            >
-                {buttonText}
-            </motion.button>
-        </motion.div>
+                <Button
+                    asChild
+                    variant={featured ? 'default' : 'outline'}
+                    size="lg"
+                    className="mt-8 w-full justify-between pl-6"
+                >
+                    <Link href={href}>
+                        {buttonText}
+                        <ButtonArrow />
+                    </Link>
+                </Button>
+            </div>
+        </div>
     )
 }
 

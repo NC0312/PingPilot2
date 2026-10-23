@@ -2,26 +2,110 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, Scatter, ScatterChart
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
 } from 'recharts';
-import {
-    Calendar,
-    ArrowDownUp,
-    Filter,
-    RefreshCw,
-    AlertTriangle,
-    TrendingUp,
-    TrendingDown,
-    Database,
-    Users,
-    Clock,
-    Zap
-} from 'lucide-react';
+import { ArrowsClockwise, ArrowUpRight, ArrowDownRight, ChartLineUp } from '@phosphor-icons/react';
 import { useAuth } from '@/app/context/AuthContext';
-import { motion } from 'framer-motion';
+import { PageContainer } from '@/app/components/Layout/AppShell';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { PageHeader } from '@/components/ui/page-header';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Reveal } from '@/components/ui/reveal';
+
+const RANGES = [
+    { key: 'week', label: 'Week' },
+    { key: 'month', label: 'Month' },
+    { key: 'year', label: 'Year' },
+];
+
+const TICK = { fill: 'oklch(0.72 0.03 215)', fontSize: 12 };
+const GRID = 'oklch(1 0 0 / 0.06)';
+
+const formatNumber = (num) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num;
+};
+
+// Glass tooltip that reads from the chart's own series colours.
+function ChartTooltip({ active, payload, label, unit = '' }) {
+    if (!active || !payload?.length) return null;
+    return (
+        <div className="glass rounded-2xl px-3.5 py-2.5 text-xs">
+            {label && <p className="mb-1 text-muted-foreground">{label}</p>}
+            {payload.map((entry, i) => (
+                <p key={i} className="flex items-center gap-2 text-foreground">
+                    <span className="size-2 rounded-full" style={{ background: entry.color || entry.payload?.fill || entry.fill }} />
+                    {entry.name}
+                    <span className="ml-auto pl-3 font-mono tabular-nums">{entry.value}{unit}</span>
+                </p>
+            ))}
+        </div>
+    );
+}
+
+// `better` says which direction is good, so a slower response time reads as a regression.
+function Delta({ change, better = 'up' }) {
+    const n = parseFloat(change);
+    if (Number.isNaN(n)) return null;
+    const up = n >= 0;
+    const good = better === 'up' ? up : !up;
+    const Icon = up ? ArrowUpRight : ArrowDownRight;
+    return (
+        <span className={`inline-flex items-center gap-1 text-xs tabular-nums ${good ? 'text-success' : 'text-destructive'}`}>
+            <Icon weight="light" className="size-4" aria-hidden="true" />
+            {up ? '+' : ''}{n}%
+            <span className="sr-only"> versus the previous period, {good ? 'better' : 'worse'}</span>
+        </span>
+    );
+}
+
+function Tile({ title, value, unit, change, better, className = '', big = false, delay = 0, children }) {
+    return (
+        <Reveal delay={delay} className={className}>
+            <div className="bezel-sm h-full">
+                <div className="bezel-sm-core flex h-full flex-col justify-between gap-8 p-6">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
+                    <div>
+                        <p className={`font-display font-medium tracking-tight tabular-nums ${big ? 'text-6xl' : 'text-4xl'}`}>
+                            {value}
+                            {unit && <span className="ml-1 text-lg font-normal text-muted-foreground">{unit}</span>}
+                        </p>
+                        {change !== undefined && <div className="mt-2"><Delta change={change} better={better} /></div>}
+                        {children}
+                    </div>
+                </div>
+            </div>
+        </Reveal>
+    );
+}
+
+function ChartPanel({ title, description, className = '', delay = 0, empty, hasData, children }) {
+    return (
+        <Reveal delay={delay} className={className}>
+            <div className="bezel-sm h-full">
+                <div className="bezel-sm-core flex h-full flex-col gap-5 p-6">
+                    <div>
+                        <h2 className="font-display text-lg font-medium tracking-tight">{title}</h2>
+                        {description && <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>}
+                    </div>
+                    {hasData ? (
+                        children
+                    ) : (
+                        <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+                            <ChartLineUp weight="light" className="size-8 text-muted-foreground/60" aria-hidden="true" />
+                            <p className="text-sm text-muted-foreground">{empty}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </Reveal>
+    );
+}
 
 export default function AdminAnalytics() {
     const [loading, setLoading] = useState(true);
@@ -30,106 +114,53 @@ export default function AdminAnalytics() {
         userGrowth: [],
         serverStatus: [],
         alertsByType: [],
-        responseTime: []
+        responseTime: [],
     });
-    const [dateRange, setDateRange] = useState('month'); // 'week', 'month', 'year'
+    const [dateRange, setDateRange] = useState('month');
     const [refreshing, setRefreshing] = useState(false);
-    const [kpis, setKpis] = useState({
-        avgResponseTime: 0,
-        uptime: 0,
-        activeServers: 0,
-        activeUsers: 0,
-        responseTimeChange: 0,
-        uptimeChange: 0,
-        serversChange: 0,
-        usersChange: 0
-    });
+    const [kpis, setKpis] = useState({});
 
     const { apiRequest } = useAuth();
-
-    // Different colors for the charts
-    const COLORS = ['#0088FE', '#FF8042', '#FFBB28', '#00C49F', '#AF19FF'];
-    const SERVER_STATUS_COLORS = ['#10b981', '#ef4444']; // green, red
-
-    // Animation variants
-    const fadeIn = {
-        hidden: { opacity: 0, y: 20 },
-        visible: {
-            opacity: 1,
-            y: 0,
-            transition: {
-                type: "spring",
-                stiffness: 100,
-                damping: 10
-            }
-        }
-    };
 
     const fetchAnalyticsData = async (isInitialLoad = true) => {
         if (isInitialLoad) setLoading(true);
         setError(null);
-        if (!isInitialLoad) setRefreshing(true);
+        setRefreshing(true);
 
         try {
-            // Calculate date range
             const now = new Date();
-            let startDate;
+            const days = { week: 7, month: 30, year: 365 }[dateRange] ?? 30;
+            const span = days * 24 * 60 * 60 * 1000;
+            const startDate = new Date(now.getTime() - span);
+            const previousPeriodStart = new Date(startDate.getTime() - span);
+            const previousPeriodEnd = new Date(startDate.getTime() - 1);
 
-            switch (dateRange) {
-                case 'week':
-                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    break;
-                case 'month':
-                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    break;
-                case 'year':
-                    startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-                    break;
-                default:
-                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            }
-
-            // Calculate previous period
-            const previousPeriodStart = new Date(startDate);
-            previousPeriodStart.setTime(startDate.getTime() - (now.getTime() - startDate.getTime()));
-            const previousPeriodEnd = new Date(startDate);
-            previousPeriodEnd.setTime(previousPeriodEnd.getTime() - 1);
-
-            // Format dates for API query
-            const startDateStr = startDate.toISOString();
-            const endDateStr = now.toISOString();
-            const prevStartDateStr = previousPeriodStart.toISOString();
-            const prevEndDateStr = previousPeriodEnd.toISOString();
-
-            // Fetch analytics data from API
-            const response = await apiRequest('/api/admin/analytics', {
-                method: 'GET',
-                params: {
-                    startDate: startDateStr,
-                    endDate: endDateStr,
-                    prevStartDate: prevStartDateStr,
-                    prevEndDate: prevEndDateStr,
-                    period: dateRange
-                }
+            // The range travels in the query string; fetch ignores a `params` option.
+            const query = new URLSearchParams({
+                startDate: startDate.toISOString(),
+                endDate: now.toISOString(),
+                prevStartDate: previousPeriodStart.toISOString(),
+                prevEndDate: previousPeriodEnd.toISOString(),
+                period: dateRange,
             });
+
+            const response = await apiRequest(`/api/admin/analytics?${query}`, { method: 'GET' });
 
             if (response.status !== 'success') {
                 throw new Error(response.message || 'Failed to fetch analytics data');
             }
 
             const analyticsData = response.data;
-
-            // Set the data for charts and KPIs
             setData({
                 userGrowth: analyticsData.userGrowth || [],
                 serverStatus: analyticsData.serverStatus || [],
                 alertsByType: analyticsData.alertsByType || [],
-                responseTime: analyticsData.responseTime || []
+                responseTime: analyticsData.responseTime || [],
             });
             setKpis(analyticsData.kpis || {});
-        } catch (error) {
-            console.error('Error fetching analytics data:', error);
-            setError('Failed to load analytics data. Please try again.');
+        } catch (err) {
+            console.error('Error fetching analytics data:', err);
+            setError('We couldn’t load analytics. Check your connection and try again.');
         } finally {
             if (isInitialLoad) setLoading(false);
             setRefreshing(false);
@@ -138,336 +169,180 @@ export default function AdminAnalytics() {
 
     useEffect(() => {
         fetchAnalyticsData(true);
-
-        // Set up refresh interval - every 5 minutes
-        const intervalId = setInterval(() => {
-            fetchAnalyticsData(false);
-        }, 5 * 60 * 1000);
-
+        const intervalId = setInterval(() => fetchAnalyticsData(false), 5 * 60 * 1000);
         return () => clearInterval(intervalId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dateRange]);
 
-    const handleRefresh = () => {
-        setRefreshing(true);
-        fetchAnalyticsData();
-    };
-
-    // Custom tooltip for charts
-    const CustomTooltip = ({ active, payload, label }) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="bg-gray-800 p-3 border border-gray-700 rounded shadow-lg">
-                    <p className="text-gray-300 font-medium">{label}</p>
-                    {payload.map((entry, index) => (
-                        <p key={`item-${index}`} style={{ color: entry.color || entry.fill }}>
-                            {entry.name}: {entry.value}
-                        </p>
-                    ))}
-                </div>
-            );
-        }
-        return null;
-    };
-
-    // Helper to format large numbers
-    const formatNumber = (num) => {
-        if (num >= 1000000) {
-            return (num / 1000000).toFixed(1) + 'M';
-        } else if (num >= 1000) {
-            return (num / 1000).toFixed(1) + 'K';
-        }
-        return num;
-    };
-
-    // KPI card component
-    const KpiCard = ({ title, value, change, icon, colorClass }) => {
-        const isPositive = parseFloat(change) >= 0;
-        const changeText = `${isPositive ? '+' : ''}${change}%`;
-
-        return (
-            <motion.div
-                className="bg-gray-800 rounded-lg p-4 shadow-md"
-                variants={fadeIn}
-                whileHover={{ y: -5, transition: { duration: 0.2 } }}
-            >
-                <div className="flex items-center justify-between mb-3">
-                    <div className="text-gray-400 text-sm">{title}</div>
-                    <div className={`p-2 rounded-full ${colorClass}`}>
-                        {icon}
-                    </div>
-                </div>
-                <div className="text-2xl font-bold text-white mb-1">{value}</div>
-                <div className="flex items-center text-sm">
-                    {isPositive ?
-                        <TrendingUp size={14} className="text-green-400 mr-1" /> :
-                        <TrendingDown size={14} className="text-red-400 mr-1" />
-                    }
-                    <span className={isPositive ? "text-green-400" : "text-red-400"}>
-                        {changeText}
-                    </span>
-                </div>
-            </motion.div>
-        );
-    };
-
-    const pieConfig = useMemo(() => ({
-        cx: "50%",
-        cy: "50%",
-        outerRadius: 80,
-        fill: "#8884d8",
-        label: ({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`,
-        labelLine: { stroke: "#555", strokeWidth: 1 }
-    }), []);
-
-    if (loading && !refreshing) {
-        return (
-            <div className="flex justify-center items-center p-16 min-h-[80vh]">
-                <div className="flex flex-col items-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-                    <p className="text-gray-400">Loading analytics data...</p>
-                </div>
-            </div>
-        );
-    }
+    const statusColors = ['var(--chart-2)', 'var(--chart-4)'];
+    const alertColors = ['var(--chart-1)', 'var(--chart-3)', 'var(--chart-2)', 'var(--chart-4)', 'var(--chart-5)'];
+    const alertMax = Math.max(1, ...data.alertsByType.map((a) => a.value || 0));
+    const statusTotal = data.serverStatus.reduce((t, s) => t + (s.value || 0), 0);
 
     return (
-        <motion.div
-            className="text-white"
-            initial="hidden"
-            animate="visible"
-            variants={{
-                hidden: { opacity: 0 },
-                visible: {
-                    opacity: 1,
-                    transition: {
-                        staggerChildren: 0.1
-                    }
+        <PageContainer className="space-y-10">
+            <PageHeader
+                eyebrow="Admin"
+                title="Analytics"
+                description="How the platform is performing, compared with the previous period."
+                actions={
+                    <>
+                        <div role="group" aria-label="Date range" className="inline-flex rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08]">
+                            {RANGES.map((r) => {
+                                const on = dateRange === r.key;
+                                return (
+                                    <button
+                                        key={r.key}
+                                        type="button"
+                                        aria-pressed={on}
+                                        onClick={() => setDateRange(r.key)}
+                                        className={`min-h-9 rounded-full px-4 text-[13px] font-medium transition-[background-color,color] duration-500 ease-fluid ${on ? 'bg-white/[0.1] text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        {r.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <Button variant="outline" size="icon" onClick={() => fetchAnalyticsData(false)} disabled={refreshing} aria-label="Refresh analytics">
+                            <ArrowsClockwise weight="light" className={refreshing ? 'animate-spin' : ''} />
+                        </Button>
+                    </>
                 }
-            }}
-        >
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold">System Analytics</h2>
-
-                <div className="flex space-x-2">
-                    <div className="bg-gray-700 rounded-lg flex p-1">
-                        <button
-                            onClick={() => setDateRange('week')}
-                            className={`px-3 py-1 text-sm rounded-md transition-colors ${dateRange === 'week' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}
-                        >
-                            Week
-                        </button>
-                        <button
-                            onClick={() => setDateRange('month')}
-                            className={`px-3 py-1 text-sm rounded-md transition-colors ${dateRange === 'month' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}
-                        >
-                            Month
-                        </button>
-                        <button
-                            onClick={() => setDateRange('year')}
-                            className={`px-3 py-1 text-sm rounded-md transition-colors ${dateRange === 'year' ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}
-                        >
-                            Year
-                        </button>
-                    </div>
-
-                    <button
-                        onClick={handleRefresh}
-                        className="bg-gray-700 hover:bg-gray-600 p-2 rounded-lg"
-                        disabled={refreshing}
-                        aria-label="Refresh data"
-                        title="Refresh data"
-                    >
-                        <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
-                    </button>
-                </div>
-            </div>
+            />
 
             {error && (
-                <motion.div
-                    className="bg-red-900/30 border border-red-600/50 rounded-lg p-4 mb-6 flex items-start"
-                    variants={fadeIn}
-                >
-                    <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={18} />
-                    <p className="text-red-200">{error}</p>
-                </motion.div>
+                <Alert tone="error" title="Something went wrong" action={<Button size="sm" variant="outline" onClick={() => fetchAnalyticsData(false)}>Try again</Button>}>
+                    {error}
+                </Alert>
             )}
 
-            {/* Key Metrics */}
-            <motion.div
-                className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"
-                variants={fadeIn}
-            >
-                <KpiCard
-                    title="Avg. Response Time"
-                    value={`${kpis.avgResponseTime}ms`}
-                    change={kpis.responseTimeChange}
-                    icon={<Clock size={18} className="text-blue-400" />}
-                    colorClass="bg-blue-900/40"
-                />
-                <KpiCard
-                    title="Uptime"
-                    value={`${kpis.uptime}%`}
-                    change={kpis.uptimeChange}
-                    icon={<Zap size={18} className="text-green-400" />}
-                    colorClass="bg-green-900/40"
-                />
-                <KpiCard
-                    title="Active Servers"
-                    value={formatNumber(kpis.activeServers)}
-                    change={kpis.serversChange}
-                    icon={<Database size={18} className="text-yellow-400" />}
-                    colorClass="bg-yellow-900/40"
-                />
-                <KpiCard
-                    title="Active Users"
-                    value={formatNumber(kpis.activeUsers)}
-                    change={kpis.usersChange}
-                    icon={<Users size={18} className="text-purple-400" />}
-                    colorClass="bg-purple-900/40"
-                />
-            </motion.div>
+            {loading ? (
+                <div className="grid gap-4 md:grid-cols-12" role="status" aria-label="Loading analytics">
+                    <Skeleton className="h-48 rounded-3xl md:col-span-5" />
+                    <Skeleton className="h-48 rounded-3xl md:col-span-4" />
+                    <Skeleton className="h-48 rounded-3xl md:col-span-3" />
+                    <Skeleton className="h-80 rounded-3xl md:col-span-8" />
+                    <Skeleton className="h-80 rounded-3xl md:col-span-4" />
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+                    <Tile title="Uptime" big value={kpis.uptime ?? '—'} unit="%" change={kpis.uptimeChange} better="up" className="md:col-span-5" />
+                    <Tile title="Avg response" value={kpis.avgResponseTime ?? '—'} unit="ms" change={kpis.responseTimeChange} better="down" className="md:col-span-4" delay={70} />
+                    <Tile title="Active servers" value={formatNumber(kpis.activeServers ?? 0)} change={kpis.serversChange} better="up" className="md:col-span-3" delay={140} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                {/* User Growth Chart */}
-                <motion.div
-                    className="bg-gray-800 rounded-lg p-4 shadow-md"
-                    variants={fadeIn}
-                >
-                    <h3 className="text-lg font-medium mb-4">User Growth</h3>
-                    {data.userGrowth.length > 0 ? (
-                        <div className="h-72">
+                    <ChartPanel
+                        title="User growth"
+                        description="New accounts over the selected period."
+                        className="md:col-span-8"
+                        hasData={data.userGrowth.length > 0}
+                        empty="No sign-ups in this period."
+                    >
+                        <div className="h-64">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart
-                                    data={data.userGrowth}
-                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                                >
+                                <AreaChart data={data.userGrowth} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
                                     <defs>
-                                        <linearGradient id="userGrowthGradient" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
+                                        <linearGradient id="userGrowthFill" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" style={{ stopColor: 'var(--chart-1)', stopOpacity: 0.3 }} />
+                                            <stop offset="100%" style={{ stopColor: 'var(--chart-1)', stopOpacity: 0 }} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-                                    <XAxis dataKey="name" stroke="#999" />
-                                    <YAxis stroke="#999" allowDecimals={false} />
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ color: '#fff' }} />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="users"
-                                        name="Users"
-                                        stroke="#3b82f6"
-                                        fillOpacity={1}
-                                        fill="url(#userGrowthGradient)"
-                                    />
+                                    <CartesianGrid vertical={false} stroke={GRID} />
+                                    <XAxis dataKey="name" tick={TICK} axisLine={false} tickLine={false} />
+                                    <YAxis tick={TICK} axisLine={false} tickLine={false} allowDecimals={false} />
+                                    <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'oklch(1 0 0 / 0.12)' }} />
+                                    <Area type="monotone" dataKey="users" name="Users" stroke="var(--chart-1)" strokeWidth={1.75} fill="url(#userGrowthFill)" />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
-                    ) : (
-                        <div className="h-72 flex items-center justify-center">
-                            <p className="text-gray-400">No user growth data available for this period</p>
-                        </div>
-                    )}
-                </motion.div>
+                    </ChartPanel>
 
-                {/* Average Response Time Chart */}
-                <motion.div
-                    className="bg-gray-800 rounded-lg p-4 shadow-md"
-                    variants={fadeIn}
-                >
-                    <h3 className="text-lg font-medium mb-4">Avg. Response Time (ms)</h3>
-                    {data.responseTime.length > 0 ? (
-                        <div className="h-72">
+                    <Tile title="Active users" value={formatNumber(kpis.activeUsers ?? 0)} change={kpis.usersChange} better="up" className="md:col-span-4" delay={70} />
+
+                    <ChartPanel
+                        title="Response time"
+                        description="Average across all monitors, in milliseconds."
+                        className="md:col-span-7"
+                        hasData={data.responseTime.length > 0}
+                        empty="No checks recorded in this period."
+                    >
+                        <div className="h-64">
                             <ResponsiveContainer width="100%" height="100%">
-                                <LineChart
-                                    data={data.responseTime}
-                                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-                                    <XAxis dataKey="name" stroke="#999" />
-                                    <YAxis stroke="#999" />
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <Legend wrapperStyle={{ color: '#fff' }} />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="avgTime"
-                                        name="Response Time (ms)"
-                                        stroke="#10b981"
-                                        activeDot={{ r: 8 }}
-                                        strokeWidth={2}
-                                    />
+                                <LineChart data={data.responseTime} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
+                                    <CartesianGrid vertical={false} stroke={GRID} />
+                                    <XAxis dataKey="name" tick={TICK} axisLine={false} tickLine={false} />
+                                    <YAxis tick={TICK} axisLine={false} tickLine={false} />
+                                    <Tooltip content={<ChartTooltip unit=" ms" />} cursor={{ stroke: 'oklch(1 0 0 / 0.12)' }} />
+                                    <Line type="monotone" dataKey="avgTime" name="Response time" stroke="var(--chart-2)" strokeWidth={1.75} dot={false} activeDot={{ r: 4, fill: 'var(--chart-2)', stroke: 'none' }} />
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>
-                    ) : (
-                        <div className="h-72 flex items-center justify-center">
-                            <p className="text-gray-400">No response time data available</p>
-                        </div>
-                    )}
-                </motion.div>
+                    </ChartPanel>
 
-                {/* Server Status Pie Chart */}
-                <motion.div
-                    className="bg-gray-800 rounded-lg p-4 shadow-md"
-                    variants={fadeIn}
-                >
-                    <h3 className="text-lg font-medium mb-4">Server Status</h3>
-                    {data.serverStatus.some(item => item.value > 0) ? (
-                        <div className="h-72 flex items-center justify-center">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={data.serverStatus}
-                                        {...pieConfig}
-                                        dataKey="value"
-                                    >
-                                        {data.serverStatus.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={SERVER_STATUS_COLORS[index % SERVER_STATUS_COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <Legend formatter={(value) => <span style={{ color: '#fff' }}>{value}</span>} />
-                                </PieChart>
-                            </ResponsiveContainer>
+                    <ChartPanel
+                        title="Server status"
+                        description="Up and down right now."
+                        className="md:col-span-5"
+                        delay={70}
+                        hasData={data.serverStatus.some((s) => s.value > 0)}
+                        empty="No servers are being monitored yet."
+                    >
+                        <div className="flex flex-col items-center gap-6 sm:flex-row">
+                            <div className="relative h-48 w-48 shrink-0">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie data={data.serverStatus} dataKey="value" nameKey="name" innerRadius={62} outerRadius={84} paddingAngle={3} stroke="none" cornerRadius={6}>
+                                            {data.serverStatus.map((entry, i) => (
+                                                <Cell key={entry.name} fill={statusColors[i % statusColors.length]} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip content={<ChartTooltip />} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                                <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
+                                    <div>
+                                        <p className="font-display text-3xl font-medium tabular-nums">{statusTotal}</p>
+                                        <p className="text-xs text-muted-foreground">servers</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <ul className="w-full space-y-3">
+                                {data.serverStatus.map((s, i) => (
+                                    <li key={s.name} className="flex items-center gap-3 text-sm">
+                                        <span className="size-2.5 rounded-full" style={{ background: statusColors[i % statusColors.length] }} aria-hidden="true" />
+                                        <span className="text-muted-foreground">{s.name}</span>
+                                        <span className="ml-auto font-mono tabular-nums">{s.value}</span>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
-                    ) : (
-                        <div className="h-72 flex items-center justify-center">
-                            <p className="text-gray-400">No server status data available</p>
-                        </div>
-                    )}
-                </motion.div>
+                    </ChartPanel>
 
-                {/* Alerts by Type Pie Chart */}
-                <motion.div
-                    className="bg-gray-800 rounded-lg p-4 shadow-md"
-                    variants={fadeIn}
-                >
-                    <h3 className="text-lg font-medium mb-4">Alerts by Type</h3>
-                    {data.alertsByType.some(item => item.value > 0) ? (
-                        <div className="h-72 flex items-center justify-center">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={data.alertsByType}
-                                        {...pieConfig}
-                                        dataKey="value"
-                                    >
-                                        {data.alertsByType.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip content={<CustomTooltip />} />
-                                    <Legend formatter={(value) => <span style={{ color: '#fff' }}>{value}</span>} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    ) : (
-                        <div className="h-72 flex items-center justify-center">
-                            <p className="text-gray-400">No alerts data available</p>
-                        </div>
-                    )}
-                </motion.div>
-            </div>
-        </motion.div>
+                    <ChartPanel
+                        title="Alerts by type"
+                        description="Alerts sent in the selected period."
+                        className="md:col-span-12"
+                        hasData={data.alertsByType.some((a) => a.value > 0)}
+                        empty="No alerts were sent in this period."
+                    >
+                        <ul className="grid gap-x-10 gap-y-5 md:grid-cols-2">
+                            {data.alertsByType.map((a, i) => (
+                                <li key={a.name}>
+                                    <div className="mb-2 flex items-baseline justify-between text-sm">
+                                        <span>{a.name}</span>
+                                        <span className="font-mono tabular-nums text-muted-foreground">{a.value}</span>
+                                    </div>
+                                    <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
+                                        <div
+                                            className="h-full origin-left rounded-full transition-transform duration-1000 ease-fluid"
+                                            style={{ width: '100%', transform: `scaleX(${(a.value || 0) / alertMax})`, background: alertColors[i % alertColors.length] }}
+                                        />
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </ChartPanel>
+                </div>
+            )}
+        </PageContainer>
     );
 }

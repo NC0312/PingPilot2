@@ -25,7 +25,7 @@ function TableHeader({
   return (
     (<thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn("border-b border-white/[0.06]", className)}
       {...props} />)
   );
 }
@@ -37,7 +37,7 @@ function TableBody({
   return (
     (<tbody
       data-slot="table-body"
-      className={cn("[&_tr:last-child]:border-0", className)}
+      className={cn("divide-y divide-white/[0.05]", className)}
       {...props} />)
   );
 }
@@ -49,7 +49,7 @@ function TableFooter({
   return (
     (<tfoot
       data-slot="table-footer"
-      className={cn("bg-muted/50 border-t font-medium [&>tr]:last:border-b-0", className)}
+      className={cn("border-t border-white/[0.06] bg-white/[0.02] font-medium", className)}
       {...props} />)
   );
 }
@@ -62,7 +62,7 @@ function TableRow({
     (<tr
       data-slot="table-row"
       className={cn(
-        "data-[state=selected]:bg-muted border-b transition-colors",
+        "transition-colors duration-300 ease-fluid hover:bg-white/[0.025] data-[state=selected]:bg-white/[0.05]",
         className
       )}
       {...props} />)
@@ -76,8 +76,9 @@ function TableHead({
   return (
     (<th
       data-slot="table-head"
+      scope="col"
       className={cn(
-        "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "h-11 px-5 text-left align-middle text-[11px] font-medium uppercase tracking-[0.14em] whitespace-nowrap text-muted-foreground",
         className
       )}
       {...props} />)
@@ -91,10 +92,7 @@ function TableCell({
   return (
     (<td
       data-slot="table-cell"
-      className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-        className
-      )}
+      className={cn("px-5 py-4 align-middle", className)}
       {...props} />)
   );
 }
@@ -106,7 +104,7 @@ function TableCaption({
   return (
     (<caption
       data-slot="table-caption"
-      className={cn("text-muted-foreground mt-4 text-sm", className)}
+      className={cn("mt-4 text-sm text-muted-foreground", className)}
       {...props} />)
   );
 }

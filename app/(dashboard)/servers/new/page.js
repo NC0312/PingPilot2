@@ -5,10 +5,18 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
 import { ServerForm } from '@/app/components/Servers/ServerForm';
 import { MonitoringForm } from '@/app/components/Servers/MonitoringForm';
-import { AlertTriangle, CheckCircle, ArrowLeft, Server, ArrowRight, Layers } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Check, PencilSimple } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { getPlanLimits } from '@/app/components/subscriptionPlans';
 import SubscriptionPopup from '@/app/components/SubscriptionPopup';
+import { PageContainer } from '@/app/components/Layout/AppShell';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button, ButtonArrow } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert } from '@/components/ui/alert';
+import { Reveal } from '@/components/ui/reveal';
+import { displayUrl } from '@/lib/time';
+import { cn } from '@/lib/utils';
 
 export default function NewServerPage() {
     const [step, setStep] = useState(1);
@@ -22,7 +30,6 @@ export default function NewServerPage() {
     const [maxServers, setMaxServers] = useState(1);
     const [fetchingUserData, setFetchingUserData] = useState(true);
 
-    // New state for subscription popup
     const [showSubscriptionPopup, setShowSubscriptionPopup] = useState(false);
 
     const router = useRouter();
@@ -35,14 +42,12 @@ export default function NewServerPage() {
             try {
                 setFetchingUserData(true);
 
-                // Get current user data with subscription info
                 const userData = user;
 
                 // Set plan type from subscription
                 const planType = userData.subscription?.plan || 'free';
                 setUserPlan(planType);
 
-                // Get plan limits outside of conditional blocks
                 const planLimits = getPlanLimits(userData);
 
                 // Set max servers based on user role and plan
@@ -61,7 +66,6 @@ export default function NewServerPage() {
                     if (response.status === 'success' && response.data.servers) {
                         setServerCount(response.data.servers.length);
 
-                        // Now planLimits is accessible here
                         if (planType === 'free' && response.data.servers.length >= planLimits.maxServers) {
                             setShowSubscriptionPopup(true);
                         }
@@ -71,7 +75,7 @@ export default function NewServerPage() {
                 }
             } catch (err) {
                 console.error('Error fetching user data:', err);
-                setError('Failed to fetch user data. Please try again.');
+                setError('We couldn’t load your account details. Refresh the page to try again.');
             } finally {
                 setFetchingUserData(false);
             }
@@ -83,7 +87,6 @@ export default function NewServerPage() {
     const handleServerFormSubmit = (data) => {
         // Check if user has reached their server limit
         if (serverCount >= maxServers && user.role !== 'admin') {
-            // Show subscription popup instead of proceeding
             setShowSubscriptionPopup(true);
             return;
         }
@@ -147,7 +150,7 @@ export default function NewServerPage() {
             if (response.status === 'success') {
                 setSuccess(true);
 
-                // Redirect to server details after 2 seconds
+                // Redirect to the servers list after 2 seconds
                 setTimeout(() => {
                     router.push('/servers');
                 }, 2000);
@@ -170,159 +173,166 @@ export default function NewServerPage() {
         }
     };
 
-    // Calculate step completion
     const steps = [
-        { number: 1, title: 'Server Details', completed: !!serverData },
-        { number: 2, title: 'Monitoring Settings', completed: !!monitoringData }
+        { number: 1, title: 'Server details', completed: !!serverData },
+        { number: 2, title: 'Monitoring', completed: !!monitoringData },
     ];
 
-    // Handle subscription popup close
     const handleCloseSubscriptionPopup = () => {
         setShowSubscriptionPopup(false);
     };
 
-    // If loading user data, show loading state
+    const backAction = (
+        <Button asChild variant="ghost" size="sm">
+            <Link href="/servers">
+                <ArrowLeft weight="light" />
+                Back to servers
+            </Link>
+        </Button>
+    );
+
     if (fetchingUserData) {
         return (
-            <div className="flex justify-center items-center p-8 h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-            </div>
+            <PageContainer>
+                <div className="mx-auto max-w-3xl space-y-8" role="status" aria-label="Loading">
+                    <Skeleton className="h-12 w-72" />
+                    <Skeleton className="h-10 w-full max-w-md" />
+                    <Skeleton className="h-[28rem] rounded-[1.375rem]" />
+                </div>
+            </PageContainer>
         );
     }
 
     return (
-        <div className="text-white container mx-auto px-4 py-8 max-w-4xl">
-            {/* Subscription Popup */}
-            <SubscriptionPopup
-                isOpen={showSubscriptionPopup}
-                onClose={handleCloseSubscriptionPopup}
-                currentPlan={userPlan}
-                serverCount={serverCount}
-                maxServers={maxServers}
-            />
+        <PageContainer>
+            <div className="mx-auto max-w-3xl space-y-8">
+                <SubscriptionPopup
+                    isOpen={showSubscriptionPopup}
+                    onClose={handleCloseSubscriptionPopup}
+                    currentPlan={userPlan}
+                    serverCount={serverCount}
+                    maxServers={maxServers}
+                />
 
-            <div className="flex justify-between items-center mb-8">
-                <div className="flex items-center">
-                    <h1 className="text-2xl font-bold">Add New Server</h1>
-                </div>
-                <Link href="/servers" className="flex items-center text-blue-400 hover:text-blue-300">
-                    <ArrowLeft size={16} className="mr-1" />
-                    Back to Servers
-                </Link>
-            </div>
+                <PageHeader
+                    eyebrow="New monitor"
+                    title="Add a server"
+                    description={
+                        success
+                            ? 'Your server is added.'
+                            : step === 1
+                                ? 'Step 1 of 2. Tell us what to check.'
+                                : 'Step 2 of 2. Choose when to check and who to alert.'
+                    }
+                    actions={backAction}
+                />
 
-            {/* Step indicator */}
-            <div className="mb-8">
-                <div className="flex items-center justify-between">
-                    {steps.map((s, i) => (
-                        <React.Fragment key={s.number}>
-                            <div className="flex flex-col items-center">
-                                <div
-                                    className={`w-10 h-10 rounded-full flex items-center justify-center 
-                                        ${step === s.number
-                                            ? 'bg-blue-600 text-white'
-                                            : s.completed
-                                                ? 'bg-green-600 text-white'
-                                                : 'bg-gray-700 text-gray-300'}`}
-                                >
-                                    {s.completed && step !== s.number ? (
-                                        <CheckCircle size={18} />
-                                    ) : (
-                                        s.number
+                {/* Step indicator */}
+                <nav aria-label="Progress">
+                    <ol className="flex items-center gap-3">
+                        {steps.map((s, i) => {
+                            const current = !success && step === s.number;
+                            const done = success || (s.completed && step !== s.number);
+                            return (
+                                <React.Fragment key={s.number}>
+                                    <li aria-current={current ? 'step' : undefined} className="flex items-center gap-3">
+                                        <span
+                                            className={cn(
+                                                'grid size-8 place-items-center rounded-full text-sm font-medium tabular-nums ring-1 transition-[background-color,color,box-shadow] duration-500 ease-fluid',
+                                                current && 'bg-primary text-primary-foreground ring-primary',
+                                                done && 'bg-success/15 text-success ring-success/40',
+                                                !current && !done && 'bg-white/[0.04] text-muted-foreground ring-white/10'
+                                            )}
+                                        >
+                                            {done ? <Check weight="bold" className="size-4" /> : s.number}
+                                        </span>
+                                        <span className={cn('text-sm font-medium', current ? 'text-foreground' : 'text-muted-foreground')}>
+                                            {s.title}
+                                            <span className="sr-only">{done ? ' (completed)' : current ? ' (current step)' : ''}</span>
+                                        </span>
+                                    </li>
+                                    {i < steps.length - 1 && (
+                                        <li aria-hidden="true" className="h-px flex-1 bg-white/10">
+                                            <span className={cn('block h-px origin-left bg-success transition-transform duration-700 ease-fluid', steps[i].completed || success ? 'scale-x-100' : 'scale-x-0')} />
+                                        </li>
                                     )}
-                                </div>
-                                <span className="mt-2 text-sm font-medium text-gray-300">{s.title}</span>
+                                </React.Fragment>
+                            );
+                        })}
+                    </ol>
+                </nav>
+
+                {success ? (
+                    <Reveal>
+                        <div className="bezel-sm" role="status">
+                            <div className="bezel-sm-core flex flex-col items-center px-6 py-14 text-center">
+                                <CheckCircle weight="light" className="size-12 text-success" />
+                                <h2 className="mt-5 font-display text-2xl font-medium tracking-tight">Server added</h2>
+                                <p className="mt-2 max-w-[44ch] text-sm leading-relaxed text-muted-foreground">
+                                    {serverData?.name} is now being monitored. Taking you to your servers.
+                                </p>
+                                <Button asChild className="mt-6">
+                                    <Link href="/servers">
+                                        Go to servers
+                                        <ButtonArrow />
+                                    </Link>
+                                </Button>
                             </div>
+                        </div>
+                    </Reveal>
+                ) : (
+                    <>
+                        {step === 1 && (
+                            <Reveal>
+                                <ServerForm
+                                    onSubmit={handleServerFormSubmit}
+                                    loading={loading}
+                                    error={error}
+                                    userPlan={userPlan}
+                                    serverCount={serverCount}
+                                    maxServers={maxServers}
+                                    initialData={serverData}
+                                    submitLabel="Continue to monitoring"
+                                    cancelHref="/servers"
+                                />
+                            </Reveal>
+                        )}
 
-                            {i < steps.length - 1 && (
-                                <div className={`flex-1 h-1 mx-2 ${steps[i].completed ? 'bg-green-600' : 'bg-gray-700'}`}></div>
-                            )}
-                        </React.Fragment>
-                    ))}
-                </div>
-            </div>
-
-            {success ? (
-                <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-6 text-center">
-                    <CheckCircle className="mx-auto text-green-500 mb-4" size={48} />
-                    <h2 className="text-xl font-semibold text-white mb-2">Server Added Successfully!</h2>
-                    <p className="text-green-200 mb-4">
-                        Your server has been added and is now being monitored. Redirecting to server details...
-                    </p>
-                </div>
-            ) : (
-                <>
-                    {step === 1 && (
-                        <ServerForm
-                            onSubmit={handleServerFormSubmit}
-                            loading={loading}
-                            error={error}
-                            userPlan={userPlan}
-                            serverCount={serverCount}
-                            maxServers={maxServers}
-                        />
-                    )}
-
-                    {step === 2 && (
-                        <div>
-                            {/* Server Summary */}
-                            <div className="mb-6 bg-gray-700 rounded-lg p-4">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <h3 className="text-lg font-medium text-white mb-1">{serverData.name}</h3>
-                                        <div className="flex items-center text-sm text-gray-300 mb-2">
-                                            <Server size={14} className="mr-1 text-gray-400" />
-                                            <span>{serverData.url}</span>
-                                        </div>
+                        {step === 2 && serverData && (
+                            <div className="space-y-6">
+                                {/* Server summary */}
+                                <div className="flex items-start justify-between gap-4 rounded-2xl bg-white/[0.03] px-5 py-4 ring-1 ring-white/[0.08]">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-medium">{serverData.name}</p>
+                                        <p className="truncate font-mono text-xs text-muted-foreground">{displayUrl(serverData.url)}</p>
                                         {serverData.description && (
-                                            <p className="text-sm text-gray-400">{serverData.description}</p>
+                                            <p className="mt-1.5 text-sm text-muted-foreground">{serverData.description}</p>
                                         )}
                                     </div>
-                                    <button
-                                        onClick={() => setStep(1)}
-                                        className="text-blue-400 hover:text-blue-300 text-sm"
-                                    >
+                                    <Button variant="ghost" size="sm" onClick={() => setStep(1)}>
+                                        <PencilSimple weight="light" />
                                         Edit
-                                    </button>
+                                    </Button>
                                 </div>
+
+                                {error && <Alert tone="error" title="We couldn’t add this server">{error}</Alert>}
+
+                                <Reveal>
+                                    <MonitoringForm
+                                        onSave={handleMonitoringFormSubmit}
+                                        isLoading={loading}
+                                        initialData={monitoringData}
+                                        submitLabel="Start monitoring"
+                                        loadingLabel="Adding server"
+                                        onBack={() => setStep(1)}
+                                        backLabel="Back to details"
+                                    />
+                                </Reveal>
                             </div>
-
-                            {error && (
-                                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4 flex items-start">
-                                    <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                                    <p className="text-red-200 text-sm">{error}</p>
-                                </div>
-                            )}
-
-                            <MonitoringForm
-                                onSave={handleMonitoringFormSubmit}
-                                isLoading={loading}
-                            />
-                        </div>
-                    )}
-
-                    {/* Navigation buttons (only needed in step 1 since step 2 has its own submit button) */}
-                    {step === 1 && (
-                        <div className="flex justify-between mt-6">
-                            <Link
-                                href="/servers"
-                                className="px-4 py-2 text-gray-300 hover:text-white"
-                            >
-                                Cancel
-                            </Link>
-
-                            <button
-                                type="button"
-                                onClick={() => document.querySelector('form').requestSubmit()}
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm px-5 py-2.5 flex items-center"
-                            >
-                                Continue to Monitoring Settings
-                                <ArrowRight size={16} className="ml-2" />
-                            </button>
-                        </div>
-                    )}
-                </>
-            )}
-        </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </PageContainer>
     );
 }

@@ -1,554 +1,523 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  Server,
-  CheckCircle,
-  AlertTriangle,
-  Clock,
-  Search,
-  Filter,
-  RefreshCw,
-  ArrowUpDown,
-  ExternalLink,
-  User,
-  Plus,
-  Trash2,
-  Info,
-  Settings
-} from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
+import {
+  HardDrives,
+  MagnifyingGlass,
+  ArrowsClockwise,
+  ArrowSquareOut,
+  Plus,
+  Trash,
+  CaretUp,
+  CaretDown,
+  CheckCircle,
+  Timer,
+  Pulse,
+} from '@phosphor-icons/react';
 import { useAuth } from '@/app/context/AuthContext';
-import { getApiUrl } from '@/lib/apiConfig';
+import { PageContainer } from '@/app/components/Layout/AppShell';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Alert } from '@/components/ui/alert';
+import { Dialog } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { StatusBadge } from '@/components/ui/status';
+import { Reveal } from '@/components/ui/reveal';
+import { timeAgo, durationSince, displayUrl, toHref } from '@/lib/time';
 
-export default function AdminServersPage() {
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'up', label: 'Operational' },
+  { key: 'down', label: 'Down' },
+];
+
+const idOf = (s) => s._id || s.id;
+
+export default function DashboardPage() {
   const [servers, setServers] = useState([]);
-  const [filteredServers, setFilteredServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortConfig, setSortConfig] = useState({ key: 'updatedAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'status', direction: 'asc' });
   const [refreshing, setRefreshing] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [checking, setChecking] = useState({});
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [userMap, setUserMap] = useState({});
 
   const { user, isAdmin, apiRequest } = useAuth();
+  const admin = isAdmin();
 
-  const fetchServers = async () => {
+  const fetchServers = useCallback(async () => {
     if (!user) return;
-
     setRefreshing(true);
     setError(null);
 
     try {
-      // Determine query parameters
-      let endpoint = '/api/servers';
+      const response = await apiRequest(admin ? '/api/servers?admin=true' : '/api/servers', { method: 'GET' });
+      const list = response.data.servers;
 
-      // Add admin=true parameter if user is admin to get all servers
-      if (isAdmin()) {
-        endpoint += '?admin=true';
-      }
-
-      // Make the API request
-      const response = await apiRequest(endpoint, {
-        method: 'GET'
-      });
-
-      const serversList = response.data.servers;
-
-      // For admin view, we need user information
-      if (isAdmin() && serversList.length > 0) {
-        const userIds = [...new Set(serversList.map(server => {
-          if (!server.uploadedBy) return null;
-          return typeof server.uploadedBy === 'object' ? server.uploadedBy._id || server.uploadedBy.id : server.uploadedBy;
-        }).filter(Boolean))];
-        const usersMap = {};
-
-        // Get user info for each user ID
+      if (admin && list.length > 0) {
         try {
-          const usersResponse = await apiRequest('/api/users', {
-            method: 'GET'
+          const usersResponse = await apiRequest('/api/users', { method: 'GET' });
+          const map = {};
+          (usersResponse.data?.users || []).forEach((u) => {
+            const uid = u.id || u._id;
+            if (uid) map[String(uid)] = u.displayName || u.email || 'Unknown user';
           });
-
-          // Create a map of user IDs to display names
-          if (usersResponse.data && usersResponse.data.users) {
-            usersResponse.data.users.forEach(userData => {
-              // Handle both _id and id fields
-              const userId = userData.id || userData._id;
-              if (userId) {
-                usersMap[userId] = userData.displayName || userData.email || 'Unknown User';
-
-                // Also store with converted id formats
-                // MongoDB sometimes returns ObjectId as string, sometimes as object
-                usersMap[userId.toString()] = userData.displayName || userData.email || 'Unknown User';
-              }
-            });
-          }
+          setUserMap(map);
         } catch (userErr) {
           console.error('Error fetching user details:', userErr);
-          // Continue with servers even if user details fail
         }
-
-        setUserMap(usersMap);
       }
 
-      setServers(serversList);
-      applyFilters(serversList);
-
+      setServers(list);
     } catch (err) {
       console.error('Error fetching servers:', err);
-      setError('Failed to load servers. Please try again.');
+      setError('We couldn’t load your servers. Check your connection and try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [user, admin, apiRequest]);
 
   useEffect(() => {
-    if (user) {
-      fetchServers();
-
-      // Set up refresh interval - every 60 seconds
-      const intervalId = setInterval(() => {
-        fetchServers();
-      }, 60 * 1000);
-
-      return () => clearInterval(intervalId);
-    }
+    if (!user) return;
+    fetchServers();
+    const id = setInterval(fetchServers, 60 * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  useEffect(() => {
-    applyFilters(servers);
-  }, [searchTerm, statusFilter, sortConfig]);
+  const ownerName = useCallback(
+    (s) => {
+      if (s.uploadedBy && typeof s.uploadedBy === 'object') {
+        return s.uploadedBy.displayName || s.uploadedBy.email || 'Unknown user';
+      }
+      return userMap[String(s.uploadedBy)] || 'Unknown user';
+    },
+    [userMap]
+  );
 
-  const applyFilters = (serversList) => {
-    let result = [...serversList];
+  const counts = useMemo(() => {
+    const up = servers.filter((s) => s.status === 'up').length;
+    const down = servers.filter((s) => s.status === 'down').length;
+    const timed = servers.filter((s) => s.status === 'up' && s.responseTime > 0);
+    const avg = timed.length ? Math.round(timed.reduce((a, s) => a + s.responseTime, 0) / timed.length) : null;
+    return { total: servers.length, up, down, pending: servers.length - up - down, avg };
+  }, [servers]);
 
-    // Apply search filter
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      result = result.filter(server =>
-        (server.name && server.name.toLowerCase().includes(searchLower)) ||
-        (server.url && server.url.toLowerCase().includes(searchLower)) ||
-        (server.description && server.description.toLowerCase().includes(searchLower)) ||
-        (isAdmin() && server.uploadedBy && userMap[server.uploadedBy] &&
-          userMap[server.uploadedBy].toLowerCase().includes(searchLower))
+  const visible = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    let result = servers.filter((s) => {
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        s.name?.toLowerCase().includes(q) ||
+        s.url?.toLowerCase().includes(q) ||
+        s.description?.toLowerCase().includes(q) ||
+        (admin && ownerName(s).toLowerCase().includes(q))
       );
-    }
+    });
 
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      result = result.filter(server => server.status === statusFilter);
-    }
+    const { key, direction } = sortConfig;
+    const dir = direction === 'asc' ? 1 : -1;
+    const rank = { down: 0, unknown: 1, up: 2 };
+    const value = (s) => {
+      if (key === 'lastChecked') return s.lastChecked ? new Date(s.lastChecked).getTime() : 0;
+      if (key === 'status') return rank[s.status] ?? 1;
+      if (key === 'responseTime') return s.responseTime ?? Infinity;
+      if (key === 'owner') return ownerName(s).toLowerCase();
+      return (s[key] || '').toString().toLowerCase();
+    };
+    result = [...result].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      return av < bv ? -dir : av > bv ? dir : 0;
+    });
+    return result;
+  }, [servers, searchTerm, statusFilter, sortConfig, admin, ownerName]);
 
-    // Apply sorting
-    if (sortConfig.key) {
-      result.sort((a, b) => {
-        // Handle nested properties
-        let aValue, bValue;
-
-        if (sortConfig.key === 'lastChecked') {
-          aValue = a.lastChecked ? new Date(a.lastChecked).getTime() : 0;
-          bValue = b.lastChecked ? new Date(b.lastChecked).getTime() : 0;
-        } else if (sortConfig.key === 'updatedAt') {
-          aValue = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-          bValue = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        } else if (sortConfig.key === 'uploadedBy' && isAdmin()) {
-          aValue = userMap[a.uploadedBy] || '';
-          bValue = userMap[b.uploadedBy] || '';
-        } else {
-          aValue = a[sortConfig.key];
-          bValue = b[sortConfig.key];
-        }
-
-        // Handle string comparison
-        if (typeof aValue === 'string') {
-          aValue = aValue.toLowerCase();
-        }
-        if (typeof bValue === 'string') {
-          bValue = bValue.toLowerCase();
-        }
-
-        if (aValue < bValue) {
-          return sortConfig.direction === 'asc' ? -1 : 1;
-        }
-        if (aValue > bValue) {
-          return sortConfig.direction === 'asc' ? 1 : -1;
-        }
-        return 0;
-      });
-    }
-
-    setFilteredServers(result);
-  };
-
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
+  const handleSort = (key) =>
+    setSortConfig((prev) => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
 
   const handleCheckServer = async (serverId) => {
+    setChecking((c) => ({ ...c, [serverId]: true }));
     try {
-      const response = await apiRequest(`/api/servers/${serverId}/check`, {
-        method: 'POST'
-      });
-
+      const response = await apiRequest(`/api/servers/${serverId}/check`, { method: 'POST' });
       if (response.status === 'success') {
-        const checkData = response.data.check;
-
-        // Update the server in the list
-        setServers(prev =>
-          prev.map(server =>
-            server._id === serverId || server.id === serverId
-              ? {
-                ...server,
-                status: checkData.status,
-                responseTime: checkData.responseTime,
-                error: checkData.error,
-                lastChecked: checkData.timestamp // Backend sends 'timestamp' in check object
-              }
-              : server
+        const check = response.data.check;
+        setServers((prev) =>
+          prev.map((s) =>
+            idOf(s) === serverId
+              ? { ...s, status: check.status, responseTime: check.responseTime, error: check.error, lastChecked: check.timestamp }
+              : s
           )
         );
-
-        // Also update filtered servers
-        applyFilters(servers.map(server =>
-          server._id === serverId || server.id === serverId
-            ? {
-              ...server,
-              status: checkData.status,
-              responseTime: checkData.responseTime,
-              error: checkData.error,
-              lastChecked: checkData.timestamp
-            }
-            : server
-        ));
       }
-    } catch (error) {
-      console.error('Error checking server:', error);
+    } catch (err) {
+      console.error('Error checking server:', err);
+      setError('That check didn’t go through. Try again in a moment.');
+    } finally {
+      setChecking((c) => ({ ...c, [serverId]: false }));
     }
   };
 
-  const handleDeleteServer = async (serverId) => {
-    if (!serverId) return;
-
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await apiRequest(`/api/servers/${serverId}`, {
-        method: 'DELETE'
-      });
-
-      // Remove the server from the lists
-      setServers(prev => prev.filter(server => (server._id !== serverId && server.id !== serverId)));
-      setFilteredServers(prev => prev.filter(server => (server._id !== serverId && server.id !== serverId)));
-      setConfirmDelete(null);
-
-    } catch (error) {
-      console.error('Error deleting server:', error);
+      const id = idOf(deleteTarget);
+      await apiRequest(`/api/servers/${id}`, { method: 'DELETE' });
+      setServers((prev) => prev.filter((s) => idOf(s) !== id));
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error('Error deleting server:', err);
+      setDeleteTarget(null);
+      setError('We couldn’t delete that server. Try again.');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  // Format timestamp to readable date/time
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'Never';
+  const downServers = servers.filter((s) => s.status === 'down');
+  const barTotal = counts.total || 1;
 
-    const date = new Date(timestamp);
-    return date.toLocaleString();
-  };
-
-  // Render status badge
-  const StatusBadge = ({ status }) => {
-    const getStatusConfig = () => {
-      switch (status) {
-        case 'up':
-          return { color: 'bg-green-500', text: 'Up' };
-        case 'down':
-          return { color: 'bg-red-500', text: 'Down' };
-        default:
-          return { color: 'bg-gray-500', text: 'Unknown' };
-      }
-    };
-
-    const config = getStatusConfig();
-
+  const SortHeader = ({ k, children, className = '' }) => {
+    const active = sortConfig.key === k;
     return (
-      <span className={`${config.color} text-white text-xs font-semibold px-2 py-1 rounded-full`}>
-        {config.text}
-      </span>
+      <th scope="col" aria-sort={active ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={`px-5 py-3 text-left font-medium ${className}`}>
+        <button
+          type="button"
+          onClick={() => handleSort(k)}
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md text-[11px] uppercase tracking-[0.14em] text-muted-foreground transition-colors duration-300 ease-fluid hover:text-foreground"
+        >
+          {children}
+          {active ? (
+            sortConfig.direction === 'asc' ? <CaretUp weight="bold" className="size-3 text-primary" /> : <CaretDown weight="bold" className="size-3 text-primary" />
+          ) : (
+            <span className="size-3" />
+          )}
+        </button>
+      </th>
     );
   };
 
-  console.log(servers);
+  const RowActions = ({ server }) => {
+    const id = idOf(server);
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <Button variant="ghost" size="sm" onClick={() => handleCheckServer(id)} disabled={checking[id]} aria-label={`Check ${server.name} now`}>
+          <ArrowsClockwise weight="light" className={checking[id] ? 'animate-spin' : ''} />
+          {checking[id] ? 'Checking' : 'Check now'}
+        </Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link href={`/servers/${id}/settings`} aria-label={`Settings for ${server.name}`}>Settings</Link>
+        </Button>
+        <Button variant="ghost" size="icon-sm" onClick={() => setDeleteTarget(server)} aria-label={`Delete ${server.name}`} className="hover:bg-destructive/12 hover:text-destructive">
+          <Trash weight="light" />
+        </Button>
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-[#031D27] text-white">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold">{isAdmin() ? 'All Servers' : 'My Servers'}</h1>
-          <div className="flex space-x-3">
-            <Link href="/servers/new">
-              <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded flex items-center">
-                <Plus size={18} className="mr-2" />
-                Add Server
-              </button>
-            </Link>
-            <button
-              onClick={() => fetchServers()}
-              className="bg-gray-700 hover:bg-gray-600 p-2 rounded"
-              disabled={refreshing}
-              title="Refresh"
-            >
-              <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
-            </button>
-          </div>
-        </div>
-
-        {/* Search and Filters */}
-        <div className="flex flex-col md:flex-row justify-between mb-6 gap-4">
-          <div className="relative w-full md:w-64">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search size={18} className="text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search servers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-gray-700 border border-gray-600 text-white rounded-lg pl-10 p-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="flex space-x-2">
-            <button
-              className={`px-4 py-2 rounded-lg ${statusFilter === 'all' ? 'bg-blue-600' : 'bg-gray-700'}`}
-              onClick={() => setStatusFilter('all')}
-            >
-              All
-            </button>
-            <button
-              className={`px-4 py-2 rounded-lg ${statusFilter === 'up' ? 'bg-green-600' : 'bg-gray-700'}`}
-              onClick={() => setStatusFilter('up')}
-            >
-              Up
-            </button>
-            <button
-              className={`px-4 py-2 rounded-lg ${statusFilter === 'down' ? 'bg-red-600' : 'bg-gray-700'}`}
-              onClick={() => setStatusFilter('down')}
-            >
-              Down
-            </button>
-          </div>
-        </div>
-
-        {/* Server List */}
-        <div className="bg-gray-800 rounded-lg overflow-hidden">
-          {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-            </div>
-          ) : filteredServers.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-700">
-                <thead className="bg-gray-700">
-                  <tr>
-                    <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                      onClick={() => handleSort('name')}
-                    >
-                      <div className="flex items-center">
-                        Server
-                        {sortConfig.key === 'name' && (
-                          <ArrowUpDown size={14} className="ml-1" />
-                        )}
-                      </div>
-                    </th>
-                    <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                      onClick={() => handleSort('url')}
-                    >
-                      <div className="flex items-center">
-                        URL
-                        {sortConfig.key === 'url' && (
-                          <ArrowUpDown size={14} className="ml-1" />
-                        )}
-                      </div>
-                    </th>
-                    <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                      onClick={() => handleSort('status')}
-                    >
-                      <div className="flex items-center">
-                        Status
-                        {sortConfig.key === 'status' && (
-                          <ArrowUpDown size={14} className="ml-1" />
-                        )}
-                      </div>
-                    </th>
-                    <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                      onClick={() => handleSort('responseTime')}
-                    >
-                      <div className="flex items-center">
-                        Response Time
-                        {sortConfig.key === 'responseTime' && (
-                          <ArrowUpDown size={14} className="ml-1" />
-                        )}
-                      </div>
-                    </th>
-                    <th
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                      onClick={() => handleSort('lastChecked')}
-                    >
-                      <div className="flex items-center">
-                        Last Checked
-                        {sortConfig.key === 'lastChecked' && (
-                          <ArrowUpDown size={14} className="ml-1" />
-                        )}
-                      </div>
-                    </th>
-                    {isAdmin() && (
-                      <th
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider cursor-pointer"
-                        onClick={() => handleSort('uploadedBy')}
-                      >
-                        <div className="flex items-center">
-                          Added By
-                          {sortConfig.key === 'uploadedBy' && (
-                            <ArrowUpDown size={14} className="ml-1" />
-                          )}
-                        </div>
-                      </th>
-                    )}
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-gray-800 divide-y divide-gray-700">
-                  {filteredServers.map((server) => (
-                    <tr key={server._id || server.id} className="hover:bg-gray-700">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Server className="text-gray-400 mr-2" size={18} />
-                          <div>
-                            <div className="font-medium">{server.name}</div>
-                            {server.description && (
-                              <div className="text-xs text-gray-400 mt-1 max-w-xs truncate">
-                                {server.description}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <a
-                          href={server.url.startsWith('http') ? server.url : `https://${server.url}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-400 hover:underline flex items-center"
-                        >
-                          {server.url.replace(/^https?:\/\//, '')}
-                          <ExternalLink size={14} className="ml-1" />
-                        </a>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <StatusBadge status={server.status} />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {server.responseTime ? `${server.responseTime} ms` : '—'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                        {server.lastChecked ? (
-                          <div className="flex items-center">
-                            <Clock size={14} className="mr-1 text-gray-400" />
-                            {formatTimestamp(server.lastChecked)}
-                          </div>
-                        ) : '—'}
-                      </td>
-                      {isAdmin() && (
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <div className="flex items-center">
-                            <User size={14} className="mr-1 text-gray-400" />
-                            {(server.uploadedBy && typeof server.uploadedBy === 'object' && server.uploadedBy.email) ?
-                              (server.uploadedBy.displayName || server.uploadedBy.email) :
-                              (userMap[server.uploadedBy] || 'Unknown User')}
-                          </div>
-                        </td>
-                      )}
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleCheckServer(server._id || server.id)}
-                          className="text-blue-400 hover:text-blue-300 mr-3"
-                          title="Check Now"
-                        >
-                          Check
-                        </button>
-                        <Link
-                          href={`/servers/${server._id || server.id}/settings`}
-                          className="text-blue-400 hover:text-blue-300 mr-3"
-                        >
-                          Details
-                        </Link>
-                        {confirmDelete === (server._id || server.id) ? (
-                          <>
-                            <button
-                              onClick={() => handleDeleteServer(server._id || server.id)}
-                              className="text-red-500 hover:text-red-400 mr-1"
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="text-gray-400 hover:text-gray-300"
-                            >
-                              Cancel
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDelete(server._id || server.id)}
-                            className="text-red-400 hover:text-red-300"
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-16">
-              <Server size={48} className="mx-auto text-gray-500 mb-4" />
-              <h3 className="text-xl font-medium text-gray-300 mb-2">No servers found</h3>
-              <p className="text-gray-400 mb-6">
-                {searchTerm || statusFilter !== 'all'
-                  ? 'Try adjusting your search or filters'
-                  : 'Add your first server to start monitoring'}
-              </p>
+    <PageContainer className="space-y-10">
+      <PageHeader
+        eyebrow={admin ? 'All accounts' : 'Overview'}
+        title="Dashboard"
+        description={
+          loading
+            ? 'Loading your monitors.'
+            : counts.total === 0
+              ? 'Add a server to start monitoring it.'
+              : counts.down > 0
+                ? `${counts.down} of ${counts.total} monitors ${counts.down === 1 ? 'is' : 'are'} down right now.`
+                : `All ${counts.total} monitors are responding.`
+        }
+        actions={
+          <>
+            <Button variant="outline" onClick={fetchServers} disabled={refreshing} aria-label="Refresh">
+              <ArrowsClockwise weight="light" className={refreshing ? 'animate-spin' : ''} />
+              Refresh
+            </Button>
+            <Button asChild>
               <Link href="/servers/new">
-                <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded inline-flex items-center">
-                  <Plus size={18} className="mr-2" />
-                  Add Server
-                </button>
+                <Plus weight="light" />
+                Add server
               </Link>
+            </Button>
+          </>
+        }
+      />
+
+      {error && (
+        <Alert
+          tone="error"
+          title="Something went wrong"
+          action={<Button size="sm" variant="outline" onClick={fetchServers}>Try again</Button>}
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* Summary bento */}
+      <section aria-label="Summary" className="grid grid-cols-1 gap-4 md:grid-cols-12">
+        <Reveal className="md:col-span-6">
+          <div className="bezel-sm h-full">
+            <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Fleet status</p>
+                  {loading ? (
+                    <Skeleton className="mt-3 h-10 w-44" />
+                  ) : (
+                    <p className="mt-2 font-display text-4xl font-medium tracking-tight tabular-nums">
+                      {counts.up}
+                      <span className="text-muted-foreground"> / {counts.total}</span>
+                      <span className="ml-2 text-base font-normal text-muted-foreground">operational</span>
+                    </p>
+                  )}
+                </div>
+                <CheckCircle weight="light" className={`size-6 ${counts.down > 0 ? 'text-muted-foreground' : 'text-success'}`} />
+              </div>
+              <div>
+                <div className="flex h-2 gap-1 overflow-hidden rounded-full" role="img" aria-label={`${counts.up} operational, ${counts.down} down, ${counts.pending} pending`}>
+                  {counts.total === 0 ? (
+                    <span className="h-full flex-1 rounded-full bg-white/[0.08]" />
+                  ) : (
+                    <>
+                      {counts.up > 0 && <span className="h-full rounded-full bg-success transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.up / barTotal }} />}
+                      {counts.down > 0 && <span className="h-full rounded-full bg-destructive transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.down / barTotal }} />}
+                      {counts.pending > 0 && <span className="h-full rounded-full bg-white/20 transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.pending / barTotal }} />}
+                    </>
+                  )}
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">Refreshes every minute.</p>
+              </div>
             </div>
-          )}
+          </div>
+        </Reveal>
+
+        <Reveal delay={80} className="md:col-span-3">
+          <div className="bezel-sm h-full">
+            <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
+              <div className="flex items-start justify-between">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Down now</p>
+                <Pulse weight="light" className={`size-6 ${counts.down > 0 ? 'text-destructive' : 'text-muted-foreground/60'}`} />
+              </div>
+              {loading ? (
+                <Skeleton className="h-10 w-16" />
+              ) : (
+                <p className={`font-display text-5xl font-medium tracking-tight tabular-nums ${counts.down > 0 ? 'text-destructive' : ''}`}>{counts.down}</p>
+              )}
+            </div>
+          </div>
+        </Reveal>
+
+        <Reveal delay={160} className="md:col-span-3">
+          <div className="bezel-sm h-full">
+            <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
+              <div className="flex items-start justify-between">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Avg response</p>
+                <Timer weight="light" className="size-6 text-muted-foreground/60" />
+              </div>
+              {loading ? (
+                <Skeleton className="h-10 w-24" />
+              ) : (
+                <p className="font-display text-5xl font-medium tracking-tight tabular-nums">
+                  {counts.avg ?? '—'}
+                  {counts.avg !== null && <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span>}
+                </p>
+              )}
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      {/* Needs attention */}
+      {!loading && downServers.length > 0 && (
+        <section aria-label="Needs attention">
+          <Alert tone="error" title={`${downServers.length} ${downServers.length === 1 ? 'server needs' : 'servers need'} attention`}>
+            <ul className="mt-2 space-y-1.5">
+              {downServers.map((s) => (
+                <li key={idOf(s)} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <Link href={`/servers/${idOf(s)}/settings`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                    {s.name}
+                  </Link>
+                  <span className="text-[13px]">
+                    {s.error ? `${s.error} · ` : ''}down for {durationSince(s.lastStatusChange || s.lastChecked)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        </section>
+      )}
+
+      {/* Monitors */}
+      <section aria-labelledby="monitors-heading" className="space-y-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <h2 id="monitors-heading" className="font-display text-2xl font-medium tracking-tight">
+            {admin ? 'All servers' : 'Your servers'}
+          </h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative sm:w-64">
+              <MagnifyingGlass weight="light" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
+              <Input type="search" aria-label="Search servers" placeholder="Search servers" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="rounded-full pl-10" />
+            </div>
+            <div role="group" aria-label="Filter by status" className="inline-flex rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08]">
+              {FILTERS.map((f) => {
+                const n = f.key === 'all' ? counts.total : f.key === 'up' ? counts.up : counts.down;
+                const on = statusFilter === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setStatusFilter(f.key)}
+                    className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-[background-color,color] duration-500 ease-fluid ${on ? 'bg-white/[0.1] text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {f.label} <span className="ml-0.5 tabular-nums text-muted-foreground">{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        {error && (
-          <div className="mt-6 bg-red-900/30 border border-red-600/50 rounded-lg p-4 text-center">
-            <AlertTriangle size={32} className="mx-auto text-red-500 mb-2" />
-            <h3 className="text-xl font-medium text-white mb-2">Error</h3>
-            <p className="text-red-200">{error}</p>
+        <div className="bezel-sm">
+          <div className="bezel-sm-core overflow-hidden">
+            {loading ? (
+              <div className="space-y-px p-3" role="status" aria-label="Loading servers">
+                {[0, 1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-16 rounded-2xl" />
+                ))}
+              </div>
+            ) : visible.length === 0 ? (
+              <EmptyState
+                icon={HardDrives}
+                title={counts.total === 0 ? 'No servers yet' : 'Nothing matches'}
+                description={
+                  counts.total === 0
+                    ? 'Add a website or server address and Ping Pilott will start checking it.'
+                    : 'Try a different search term or clear the status filter.'
+                }
+                action={
+                  counts.total === 0 ? (
+                    <Button asChild>
+                      <Link href="/servers/new">
+                        <Plus weight="light" />
+                        Add your first server
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button variant="outline" onClick={() => { setSearchTerm(''); setStatusFilter('all'); }}>
+                      Clear filters
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <>
+                {/* Desktop table */}
+                <div className="hidden overflow-x-auto lg:block">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-white/[0.06]">
+                      <tr>
+                        <SortHeader k="name">Server</SortHeader>
+                        <SortHeader k="status">Status</SortHeader>
+                        <SortHeader k="responseTime">Response</SortHeader>
+                        <SortHeader k="lastChecked">Last check</SortHeader>
+                        {admin && <SortHeader k="owner">Owner</SortHeader>}
+                        <th scope="col" className="px-5 py-3 text-right text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                          <span className="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.05]">
+                      {visible.map((server) => (
+                        <tr key={idOf(server)} className="transition-colors duration-300 ease-fluid hover:bg-white/[0.025]">
+                          <td className="px-5 py-4">
+                            <Link href={`/servers/${idOf(server)}/settings`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                              {server.name}
+                            </Link>
+                            <a
+                              href={toHref(server.url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-0.5 flex w-fit items-center gap-1 font-mono text-xs text-muted-foreground transition-colors duration-300 ease-fluid hover:text-primary"
+                            >
+                              {displayUrl(server.url)}
+                              <ArrowSquareOut weight="light" className="size-3.5" />
+                              <span className="sr-only">(opens in a new tab)</span>
+                            </a>
+                          </td>
+                          <td className="px-5 py-4">
+                            <StatusBadge status={server.status} />
+                          </td>
+                          <td className="px-5 py-4 font-mono text-[13px] tabular-nums">
+                            {server.responseTime ? `${server.responseTime} ms` : <span className="text-muted-foreground">—</span>}
+                          </td>
+                          <td className="px-5 py-4 text-[13px] text-muted-foreground">{timeAgo(server.lastChecked)}</td>
+                          {admin && <td className="px-5 py-4 text-[13px] text-muted-foreground">{ownerName(server)}</td>}
+                          <td className="px-3 py-3">
+                            <RowActions server={server} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile cards */}
+                <ul className="divide-y divide-white/[0.05] lg:hidden">
+                  {visible.map((server) => (
+                    <li key={idOf(server)} className="space-y-3 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <Link href={`/servers/${idOf(server)}/settings`} className="block truncate font-medium">
+                            {server.name}
+                          </Link>
+                          <p className="truncate font-mono text-xs text-muted-foreground">{displayUrl(server.url)}</p>
+                        </div>
+                        <StatusBadge status={server.status} />
+                      </div>
+                      <div className="flex items-center justify-between text-[13px] text-muted-foreground">
+                        {server.responseTime ? <span className="font-mono tabular-nums text-foreground">{server.responseTime} ms</span> : <span>No response</span>}
+                        <span>{server.lastChecked ? `Checked ${timeAgo(server.lastChecked)}` : 'Not checked yet'}</span>
+                      </div>
+                      {admin && <p className="text-[13px] text-muted-foreground">Owner: {ownerName(server)}</p>}
+                      <RowActions server={server} />
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      </section>
+
+      <Dialog
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        title={`Delete ${deleteTarget?.name ?? 'server'}?`}
+        description={'Monitoring stops immediately and its check history is removed. This can’t be undone.'}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              Keep server
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? 'Deleting' : 'Delete server'}
+            </Button>
+          </>
+        }
+      />
+    </PageContainer>
   );
 }

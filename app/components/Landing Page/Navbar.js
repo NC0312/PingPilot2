@@ -1,184 +1,126 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import Image from 'next/image'
 import Link from 'next/link'
 import { useAuth } from '@/app/context/AuthContext'
+import { Brand } from '@/components/ui/brand'
+import { Button, ButtonArrow } from '@/components/ui/button'
+
+const NAV_LINKS = [
+    { label: 'Features', href: '#features' },
+    { label: 'How it works', href: '#how' },
+    { label: 'Pricing', href: '#pricing' },
+]
 
 const Navbar = () => {
-    const { user } = useAuth() // Assuming you have a custom hook for authentication
-    const [isMobile, setIsMobile] = useState(false)
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+    const { user } = useAuth()
+    const [open, setOpen] = useState(false)
 
-    // Check for mobile viewport on mount and resize
     useEffect(() => {
-        const checkMobile = () => {
-            setIsMobile(window.innerWidth < 768)
-        }
-
-        // Initial check
-        checkMobile()
-
-        // Add resize listener
-        window.addEventListener('resize', checkMobile)
-
-        // Cleanup listener on component unmount
+        if (!open) return
+        const onKey = (e) => e.key === 'Escape' && setOpen(false)
+        const prev = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
+        window.addEventListener('keydown', onKey)
         return () => {
-            window.removeEventListener('resize', checkMobile)
+            window.removeEventListener('keydown', onKey)
+            document.body.style.overflow = prev
         }
-    }, [])
+    }, [open])
 
-    // Scroll to section function
-    const scrollToSection = (sectionId) => {
-        const section = document.getElementById(sectionId)
-        if (section) {
-            section.scrollIntoView({ behavior: 'smooth' })
-            setMobileMenuOpen(false)
-        }
-    }
-
-    // Nav links data with section IDs
-    const navLinks = [
-        { name: "Features", href: "#features", sectionId: "features" },
-        { name: "Pricing", href: "#pricing", sectionId: "pricing" },
-    ]
+    const primary = user
+        ? { href: '/dashboard', label: 'Dashboard' }
+        : { href: '/auth?mode=signup', label: 'Start free' }
 
     return (
-        <>
-            <nav className='flex justify-between items-center border-b border-gray-700 px-4 md:px-6 py-4 md:py-6 sticky top-0 bg-[#031D27] z-40'>
-                <motion.div
-                    className='flex items-center gap-2'
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.5 }}
-                >
-                    <div className="relative h-10 w-10 md:h-12 md:w-12">
-                        <Image
-                            src='/favicon.png'
-                            alt="Ping Pilott Logo"
-                            fill
-                            sizes="(max-width: 768px) 40px, 48px"
-                            priority
-                        />
-                    </div>
-                    <h1 className='font-mono text-xl md:text-2xl font-bold text-gray-300'>Ping Pilott</h1>
-                </motion.div>
-
-                {/* Mobile menu button */}
-                {isMobile && (
-                    <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                        className='text-gray-300 focus:outline-none'
-                        aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-                    >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            className="w-6 h-6"
-                            aria-hidden="true"
+        <header
+            className="fixed inset-x-0 top-4 flex justify-center px-4 sm:top-6"
+            style={{ zIndex: open ? 'var(--z-overlay)' : 'var(--z-nav)' }}
+        >
+            {/* Expanded menu: full-screen glass */}
+            <div
+                id="mobile-menu"
+                aria-hidden={!open}
+                inert={!open}
+                className={`fixed inset-0 bg-background/85 backdrop-blur-3xl transition-[opacity,visibility] duration-700 ease-fluid md:hidden ${open ? 'visible opacity-100' : 'invisible opacity-0'}`}
+            >
+                <nav aria-label="Mobile" className="flex h-full flex-col justify-center gap-2 px-8 pb-10 pt-24">
+                    {NAV_LINKS.map((l, i) => (
+                        <a
+                            key={l.href}
+                            href={l.href}
+                            onClick={() => setOpen(false)}
+                            style={{ transitionDelay: open ? `${100 + i * 70}ms` : '0ms' }}
+                            className={`font-display text-4xl font-medium tracking-tight text-foreground transition-[opacity,transform] duration-700 ease-fluid ${open ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
                         >
-                            {mobileMenuOpen ? (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                            )}
-                        </svg>
-                    </motion.button>
-                )}
-
-                {/* Desktop menu */}
-                {!isMobile && (
-                    <motion.div
-                        className='flex gap-4'
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5, delay: 0.2 }}
+                            {l.label}
+                        </a>
+                    ))}
+                    <div
+                        style={{ transitionDelay: open ? '340ms' : '0ms' }}
+                        className={`mt-8 flex flex-col gap-3 transition-[opacity,transform] duration-700 ease-fluid ${open ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}
                     >
-                        {navLinks.map((link, index) => (
-                            <motion.div key={index}>
-                                <a
-                                    href={link.href}
-                                    onClick={(e) => {
-                                        e.preventDefault()
-                                        scrollToSection(link.sectionId)
-                                    }}
-                                >
-                                    <motion.span
-                                        whileHover={{ scale: 1.05, color: "#ffffff" }}
-                                        whileTap={{ scale: 0.95 }}
-                                        className='px-4 py-2 font-mono text-gray-300 inline-block cursor-pointer'
-                                    >
-                                        {link.name}
-                                    </motion.span>
-                                </a>
-                            </motion.div>
-                        ))}
-                        {user ? (
-                            <Link href="/dashboard">
-                                <motion.button
-                                    whileHover={{ scale: 1.05, backgroundColor: "#2563eb" }}
-                                    whileTap={{ scale: 0.95 }}
-                                    className='px-4 py-2 font-mono bg-blue-600 text-white rounded-lg'
-                                >
-                                    Dashboard
-                                </motion.button>
+                        <Button asChild size="lg" onClick={() => setOpen(false)}>
+                            <Link href={primary.href}>
+                                {primary.label}
+                                <ButtonArrow />
                             </Link>
-                        ) : (
-                            <Link href="/auth">
-                                <motion.button
-                                    whileHover={{ scale: 1.05, backgroundColor: "#2563eb" }}
-                                    whileTap={{ scale: 0.95 }}
-                                    className='px-4 py-2 font-mono bg-blue-600 text-white rounded-lg'
-                                >
-                                    Sign In
-                                </motion.button>
-                            </Link>
+                        </Button>
+                        {!user && (
+                            <Button asChild size="lg" variant="outline" onClick={() => setOpen(false)}>
+                                <Link href="/auth">Sign in</Link>
+                            </Button>
                         )}
-                    </motion.div>
-                )}
-            </nav>
+                    </div>
+                </nav>
+            </div>
 
-            {/* Mobile menu dropdown */}
-            <AnimatePresence>
-                {isMobile && mobileMenuOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className='flex flex-col bg-gray-800 border-b border-gray-700 z-30'
-                    >
-                        {navLinks.map((link, index) => (
-                            <a
-                                key={index}
-                                href={link.href}
-                                onClick={(e) => {
-                                    e.preventDefault()
-                                    scrollToSection(link.sectionId)
-                                }}
-                                className="block"
-                            >
-                                <motion.div
-                                    whileTap={{ scale: 0.95 }}
-                                    className='px-4 py-3 font-mono text-gray-300 text-left border-b border-gray-700 cursor-pointer'
-                                >
-                                    {link.name}
-                                </motion.div>
-                            </a>
-                        ))}
-                        <motion.button
-                            whileTap={{ scale: 0.95 }}
-                            className='px-4 py-3 font-mono text-white bg-blue-600 m-4 rounded-lg text-center'
+            {/* Floating pill */}
+            <div className="glass relative flex w-full max-w-3xl items-center justify-between rounded-full py-2 pl-3 pr-2">
+                <Brand />
+
+                <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+                    {NAV_LINKS.map((l) => (
+                        <a
+                            key={l.href}
+                            href={l.href}
+                            className="rounded-full px-3.5 py-2 text-sm text-muted-foreground transition-colors duration-300 ease-fluid hover:bg-white/[0.06] hover:text-foreground"
                         >
-                            Sign In
-                        </motion.button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </>
+                            {l.label}
+                        </a>
+                    ))}
+                </nav>
+
+                <div className="hidden items-center gap-1.5 md:flex">
+                    {!user && (
+                        <Button asChild variant="ghost" size="sm">
+                            <Link href="/auth">Sign in</Link>
+                        </Button>
+                    )}
+                    <Button asChild size="sm" className="pr-1">
+                        <Link href={primary.href}>
+                            {primary.label}
+                            <ButtonArrow className="size-6" />
+                        </Link>
+                    </Button>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => setOpen((v) => !v)}
+                    aria-expanded={open}
+                    aria-controls="mobile-menu"
+                    aria-label={open ? 'Close menu' : 'Open menu'}
+                    className="relative grid size-10 place-items-center rounded-full bg-white/[0.06] transition-colors duration-300 ease-fluid hover:bg-white/[0.1] active:scale-95 md:hidden"
+                >
+                    <span
+                        className={`absolute h-px w-4 bg-foreground transition-transform duration-500 ease-fluid ${open ? 'rotate-45' : '-translate-y-[3px]'}`}
+                    />
+                    <span
+                        className={`absolute h-px w-4 bg-foreground transition-transform duration-500 ease-fluid ${open ? '-rotate-45' : 'translate-y-[3px]'}`}
+                    />
+                </button>
+            </div>
+        </header>
     )
 }
 

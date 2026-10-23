@@ -1,292 +1,320 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { ArrowsClockwise, MagnifyingGlass, PencilSimple, ShieldCheck, UserMinus, Check, Clock, UsersThree } from '@phosphor-icons/react';
 import { useAuth } from '@/app/context/AuthContext';
-import { User, ShieldCheck, Shield, MoreVertical, Edit, Trash, Check, X } from 'lucide-react';
+import { PageContainer } from '@/app/components/Layout/AppShell';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
+import { Dialog } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { PageHeader } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+const idOf = (u) => u._id || u.id;
+
+function RoleBadge({ role }) {
+    return role === 'admin' ? (
+        <Badge variant="default"><ShieldCheck weight="light" aria-hidden="true" />Admin</Badge>
+    ) : (
+        <Badge variant="secondary">User</Badge>
+    );
+}
+
+function VerifiedBadge({ verified }) {
+    return verified ? (
+        <Badge variant="success"><Check weight="light" aria-hidden="true" />Verified</Badge>
+    ) : (
+        <Badge variant="warning"><Clock weight="light" aria-hidden="true" />Unverified</Badge>
+    );
+}
+
+function Avatar({ user }) {
+    const name = user.displayName || user.email || '?';
+    return (
+        <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/[0.07] font-display text-sm font-medium ring-1 ring-white/10" aria-hidden="true">
+            {user.photoURL ? <img src={user.photoURL} alt="" className="size-full object-cover" /> : name.trim().charAt(0).toUpperCase()}
+        </span>
+    );
+}
 
 export default function UsersManagement() {
     const { user: currentUser, updateUserRole, apiRequest } = useAuth();
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [actionError, setActionError] = useState(null);
+    const [refreshing, setRefreshing] = useState(false);
+    const [query, setQuery] = useState('');
+
     const [selectedUser, setSelectedUser] = useState(null);
-    const [isEditing, setIsEditing] = useState(false);
-    const [editForm, setEditForm] = useState({
-        displayName: '',
-        role: ''
-    });
+    const [editForm, setEditForm] = useState({ displayName: '', role: 'user' });
+    const [saving, setSaving] = useState(false);
 
-    useEffect(() => {
-        const fetchUsers = async () => {
-            try {
-                setLoading(true);
+    const [roleTarget, setRoleTarget] = useState(null);
+    const [changingRole, setChangingRole] = useState(false);
 
-                // Fetch users from the API
-                const response = await apiRequest('/api/users', {
-                    method: 'GET'
-                });
-
-                if (response.status !== 'success') {
-                    throw new Error(response.message || 'Failed to fetch users');
-                }
-
-                const usersList = response.data.users || [];
-                setUsers(usersList);
-            } catch (error) {
-                console.error('Error fetching users:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchUsers();
-    }, [apiRequest]);
-
-    const handleRoleChange = async (userId, newRole) => {
+    const fetchUsers = async () => {
         try {
-            // Use the updateUserRole function from AuthContext
-            await updateUserRole(userId, newRole);
+            setRefreshing(true);
+            setError(null);
 
-            // Update the users list with the new role
-            setUsers(prevUsers =>
-                prevUsers.map(user =>
-                    (user._id === userId || user.id === userId) ? { ...user, role: newRole } : user
-                )
-            );
-        } catch (error) {
-            console.error('Error updating user role:', error);
+            const response = await apiRequest('/api/users', { method: 'GET' });
+
+            if (response.status !== 'success') {
+                throw new Error(response.message || 'Failed to fetch users');
+            }
+
+            setUsers(response.data.users || []);
+        } catch (err) {
+            console.error('Error fetching users:', err);
+            setError('We couldn’t load users. Check your connection and try again.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
         }
     };
 
-    const handleEditClick = (user) => {
-        setSelectedUser(user);
-        setEditForm({
-            displayName: user.displayName || '',
-            role: user.role || 'user'
-        });
-        setIsEditing(true);
+    useEffect(() => {
+        fetchUsers();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const visible = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return users;
+        return users.filter((u) => u.displayName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
+    }, [users, query]);
+
+    const isSelf = (u) => currentUser?.id === idOf(u) || currentUser?._id === idOf(u);
+
+    const confirmRoleChange = async () => {
+        if (!roleTarget) return;
+        const nextRole = roleTarget.role === 'admin' ? 'user' : 'admin';
+        try {
+            setChangingRole(true);
+            setActionError(null);
+            await updateUserRole(idOf(roleTarget), nextRole);
+            setUsers((prev) => prev.map((u) => (idOf(u) === idOf(roleTarget) ? { ...u, role: nextRole } : u)));
+            setRoleTarget(null);
+        } catch (err) {
+            console.error('Error updating user role:', err);
+            setRoleTarget(null);
+            setActionError('We couldn’t change that role. Try again.');
+        } finally {
+            setChangingRole(false);
+        }
     };
 
-    const handleCancelEdit = () => {
-        setIsEditing(false);
-        setSelectedUser(null);
+    const openEdit = (u) => {
+        setSelectedUser(u);
+        setEditForm({ displayName: u.displayName || '', role: u.role || 'user' });
     };
 
     const handleSaveEdit = async () => {
         if (!selectedUser) return;
-
         try {
-            const userId = selectedUser._id || selectedUser.id;
+            setSaving(true);
+            setActionError(null);
+            const userId = idOf(selectedUser);
 
-            // Update the user via API
             const response = await apiRequest(`/api/users/${userId}`, {
                 method: 'PATCH',
-                body: JSON.stringify({
-                    displayName: editForm.displayName,
-                    role: editForm.role
-                })
+                body: JSON.stringify({ displayName: editForm.displayName, role: editForm.role }),
             });
 
             if (response.status !== 'success') {
                 throw new Error(response.message || 'Failed to update user');
             }
 
-            // Update local state
-            setUsers(prevUsers =>
-                prevUsers.map(user =>
-                    (user._id === userId || user.id === userId)
-                        ? { ...user, displayName: editForm.displayName, role: editForm.role }
-                        : user
-                )
-            );
-
-            setIsEditing(false);
+            setUsers((prev) => prev.map((u) => (idOf(u) === userId ? { ...u, displayName: editForm.displayName, role: editForm.role } : u)));
             setSelectedUser(null);
-        } catch (error) {
-            console.error('Error updating user:', error);
+        } catch (err) {
+            console.error('Error updating user:', err);
+            setSelectedUser(null);
+            setActionError('We couldn’t save those changes. Try again.');
+        } finally {
+            setSaving(false);
         }
     };
 
-    const getRoleBadge = (role) => {
-        if (role === 'admin') {
-            return (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                    <ShieldCheck size={12} className="mr-1" />
-                    Admin
-                </span>
-            );
-        }
+    const Actions = ({ u }) => {
+        const self = isSelf(u);
         return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                <User size={12} className="mr-1" />
-                User
-            </span>
+            <div className="flex items-center justify-end gap-1">
+                <Button variant="ghost" size="sm" onClick={() => openEdit(u)} aria-label={`Edit ${u.displayName || u.email}`}>
+                    <PencilSimple weight="light" />
+                    Edit
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setRoleTarget(u)}
+                    disabled={self}
+                    title={self ? 'You can’t change your own role' : undefined}
+                    aria-label={u.role === 'admin' ? `Demote ${u.displayName || u.email} to user` : `Promote ${u.displayName || u.email} to admin`}
+                >
+                    {u.role === 'admin' ? <UserMinus weight="light" /> : <ShieldCheck weight="light" />}
+                    {u.role === 'admin' ? 'Demote' : 'Promote'}
+                </Button>
+            </div>
         );
     };
 
+    const editingSelf = selectedUser && isSelf(selectedUser);
+    const adminCount = users.filter((u) => u.role === 'admin').length;
+
     return (
-        <div className="text-white">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold">User Management</h2>
-                <div className="flex space-x-2">
-                    <div className="relative">
-                        <input
-                            type="text"
-                            placeholder="Search users..."
-                            className="bg-gray-600 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <PageContainer className="space-y-10">
+            <PageHeader
+                eyebrow="Admin"
+                title="Users"
+                description={loading ? 'Loading users.' : `${users.length} ${users.length === 1 ? 'account' : 'accounts'}, ${adminCount} with admin access.`}
+                actions={
+                    <Button variant="outline" onClick={fetchUsers} disabled={refreshing}>
+                        <ArrowsClockwise weight="light" className={refreshing ? 'animate-spin' : ''} />
+                        Refresh
+                    </Button>
+                }
+            />
+
+            {actionError && <Alert tone="error" title="Something went wrong">{actionError}</Alert>}
+
+            <div className="relative sm:w-80">
+                <MagnifyingGlass weight="light" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
+                <Input type="search" aria-label="Search users" placeholder="Search name or email" value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-full pl-10" />
+            </div>
+
+            {error && (
+                <Alert tone="error" title="Something went wrong" action={<Button size="sm" variant="outline" onClick={fetchUsers}>Try again</Button>}>
+                    {error}
+                </Alert>
+            )}
+
+            <div className="bezel-sm">
+                <div className="bezel-sm-core overflow-hidden">
+                    {loading ? (
+                        <div className="space-y-px p-3" role="status" aria-label="Loading users">
+                            {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
+                        </div>
+                    ) : visible.length === 0 ? (
+                        <EmptyState
+                            icon={UsersThree}
+                            title={users.length === 0 ? 'No users yet' : 'Nothing matches'}
+                            description={users.length === 0 ? 'Accounts appear here once people sign up.' : 'Try a different name or email.'}
+                            action={users.length > 0 && <Button variant="outline" onClick={() => setQuery('')}>Clear search</Button>}
                         />
-                    </div>
+                    ) : (
+                        <>
+                            <div className="hidden md:block">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead>User</TableHead>
+                                            <TableHead>Email</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>Role</TableHead>
+                                            <TableHead className="text-right"><span className="sr-only">Actions</span></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {visible.map((u) => (
+                                            <TableRow key={idOf(u)}>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-3">
+                                                        <Avatar user={u} />
+                                                        <div>
+                                                            <p className="font-medium">{u.displayName || 'Unnamed user'}{isSelf(u) && <span className="ml-2 text-xs font-normal text-muted-foreground">You</span>}</p>
+                                                            <p className="font-mono text-xs text-muted-foreground">{String(idOf(u)).slice(0, 8)}</p>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="font-mono text-[13px] text-muted-foreground">{u.email}</TableCell>
+                                                <TableCell><VerifiedBadge verified={u.emailVerified} /></TableCell>
+                                                <TableCell><RoleBadge role={u.role} /></TableCell>
+                                                <TableCell><Actions u={u} /></TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            <ul className="divide-y divide-white/[0.05] md:hidden">
+                                {visible.map((u) => (
+                                    <li key={idOf(u)} className="space-y-3 p-4">
+                                        <div className="flex items-center gap-3">
+                                            <Avatar user={u} />
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate font-medium">{u.displayName || 'Unnamed user'}</p>
+                                                <p className="truncate font-mono text-xs text-muted-foreground">{u.email}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <RoleBadge role={u.role} />
+                                            <VerifiedBadge verified={u.emailVerified} />
+                                        </div>
+                                        <Actions u={u} />
+                                    </li>
+                                ))}
+                            </ul>
+                        </>
+                    )}
                 </div>
             </div>
 
-            {loading ? (
-                <div className="flex justify-center p-8">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            {/* Edit user */}
+            <Dialog
+                open={!!selectedUser}
+                onClose={() => !saving && setSelectedUser(null)}
+                title="Edit user"
+                description={selectedUser?.email}
+                footer={
+                    <>
+                        <Button variant="ghost" onClick={() => setSelectedUser(null)} disabled={saving}>Cancel</Button>
+                        <Button onClick={handleSaveEdit} disabled={saving}>{saving ? 'Saving' : 'Save changes'}</Button>
+                    </>
+                }
+            >
+                <div className="space-y-5">
+                    <Field id="displayName" label="Display name">
+                        <Input id="displayName" value={editForm.displayName} onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })} />
+                    </Field>
+                    <Field id="role" label="Role" hint={editingSelf ? 'You can’t change your own role.' : undefined}>
+                        <Select value={editForm.role} onValueChange={(role) => setEditForm({ ...editForm, role })} disabled={editingSelf}>
+                            <SelectTrigger id="role" className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="user">User</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </Field>
                 </div>
-            ) : (
-                <div className="bg-gray-700 rounded-lg overflow-hidden">
-                    <table className="min-w-full divide-y divide-gray-600">
-                        <thead className="bg-gray-800">
-                            <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                    User
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                    Email
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                    Status
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                    Role
-                                </th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-gray-700 divide-y divide-gray-600">
-                            {users.map((user) => (
-                                <tr key={user._id || user.id} className="hover:bg-gray-650">
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center">
-                                            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-600 flex items-center justify-center">
-                                                {user.photoURL ? (
-                                                    <img className="h-10 w-10 rounded-full" src={user.photoURL} alt="" />
-                                                ) : (
-                                                    <User size={20} className="text-gray-400" />
-                                                )}
-                                            </div>
-                                            <div className="ml-4">
-                                                <div className="text-sm font-medium text-white">
-                                                    {user.displayName || 'Unnamed User'}
-                                                </div>
-                                                <div className="text-sm text-gray-400">User ID: {(user._id || user.id).substring(0, 8)}...</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-white">{user.email}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        {user.emailVerified ? (
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                                <Check size={12} className="mr-1" />
-                                                Verified
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                                                <X size={12} className="mr-1" />
-                                                Unverified
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        {getRoleBadge(user.role)}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <div className="flex justify-end space-x-2">
-                                            <button
-                                                onClick={() => handleEditClick(user)}
-                                                className="text-blue-400 hover:text-blue-300 p-1"
-                                                title="Edit User"
-                                            >
-                                                <Edit size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => handleRoleChange(
-                                                    user._id || user.id,
-                                                    user.role === 'admin' ? 'user' : 'admin'
-                                                )}
-                                                className={`${user.role === 'admin' ? 'text-purple-400 hover:text-purple-300' : 'text-gray-400 hover:text-gray-300'
-                                                    } p-1`}
-                                                title={user.role === 'admin' ? 'Demote to User' : 'Promote to Admin'}
-                                                disabled={currentUser.id === (user._id || user.id)}
-                                            >
-                                                {user.role === 'admin' ? <User size={16} /> : <ShieldCheck size={16} />}
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+            </Dialog>
 
-            {/* Edit User Modal */}
-            {isEditing && selectedUser && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md">
-                        <h3 className="text-lg font-medium text-white mb-4">Edit User</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label htmlFor="displayName" className="block text-sm font-medium text-gray-400 mb-1">
-                                    Display Name
-                                </label>
-                                <input
-                                    type="text"
-                                    id="displayName"
-                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={editForm.displayName}
-                                    onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label htmlFor="role" className="block text-sm font-medium text-gray-400 mb-1">
-                                    Role
-                                </label>
-                                <select
-                                    id="role"
-                                    className="bg-gray-700 text-white rounded-lg px-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={editForm.role}
-                                    onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                                    disabled={currentUser.id === (selectedUser._id || selectedUser.id)}
-                                >
-                                    <option value="user">User</option>
-                                    <option value="admin">Admin</option>
-                                </select>
-                                {currentUser.id === (selectedUser._id || selectedUser.id) && (
-                                    <p className="text-yellow-400 text-xs mt-1">You cannot change your own role</p>
-                                )}
-                            </div>
-                        </div>
-                        <div className="mt-6 flex justify-end space-x-3">
-                            <button
-                                onClick={handleCancelEdit}
-                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSaveEdit}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500"
-                            >
-                                Save Changes
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+            {/* Confirm promote / demote */}
+            <Dialog
+                open={!!roleTarget}
+                onClose={() => !changingRole && setRoleTarget(null)}
+                title={roleTarget?.role === 'admin' ? `Remove admin access for ${roleTarget?.displayName || roleTarget?.email}?` : `Make ${roleTarget?.displayName || roleTarget?.email} an admin?`}
+                description={
+                    roleTarget?.role === 'admin'
+                        ? 'They will lose access to the admin area immediately.'
+                        : 'Admins can see every account, server and support ticket, and can change other users’ roles.'
+                }
+                footer={
+                    <>
+                        <Button variant="ghost" onClick={() => setRoleTarget(null)} disabled={changingRole}>Cancel</Button>
+                        <Button variant={roleTarget?.role === 'admin' ? 'destructive' : 'default'} onClick={confirmRoleChange} disabled={changingRole}>
+                            {changingRole ? 'Saving' : roleTarget?.role === 'admin' ? 'Remove admin access' : 'Make admin'}
+                        </Button>
+                    </>
+                }
+            />
+        </PageContainer>
     );
 }

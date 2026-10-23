@@ -1,12 +1,31 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
 import { ServerForm } from '@/app/components/Servers/ServerForm';
 import { MonitoringForm } from '@/app/components/Servers/MonitoringForm';
-import { ArrowLeft, Server as ServerIcon, AlertTriangle, Check, Settings as SettingsIcon, Trash2, Calendar } from 'lucide-react';
+import { ArrowLeft, ArrowSquareOut, Trash, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import Link from 'next/link';
+import { PageContainer } from '@/app/components/Layout/AppShell';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
+import { Dialog } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { StatusBadge } from '@/components/ui/status';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Reveal } from '@/components/ui/reveal';
+import { displayUrl, toHref, formatDateTime } from '@/lib/time';
+import { cn } from '@/lib/utils';
+
+const TABS = [
+    { id: 'general', label: 'General' },
+    { id: 'monitoring', label: 'Monitoring and alerts' },
+    { id: 'danger', label: 'Danger zone', danger: true },
+];
 
 export default function ServerSettingsPage() {
     const [server, setServer] = useState(null);
@@ -17,6 +36,7 @@ export default function ServerSettingsPage() {
     const [activeTab, setActiveTab] = useState('general');
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteInput, setDeleteInput] = useState('');
+    const tabRefs = useRef({});
 
     const router = useRouter();
     const params = useParams();
@@ -30,7 +50,6 @@ export default function ServerSettingsPage() {
             try {
                 setLoading(true);
 
-                // Fetch server from API
                 const response = await apiRequest(`/api/servers/${serverId}`, {
                     method: 'GET'
                 });
@@ -41,18 +60,9 @@ export default function ServerSettingsPage() {
 
                 const serverData = response.data.server;
 
-                // Debug logging
-                console.log('Authorization check:', {
-                    serverUploadedBy: serverData.uploadedBy,
-                    userId: user._id || user.id, // Check both _id and id
-                    userRole: user.role,
-                    match: String(serverData.uploadedBy) === String(user._id || user.id)
-                });
-
                 // Check if user is authorized to access this server (convert to strings for comparison)
                 const currentUserId = user._id || user.id; // Support both _id and id
                 if (String(serverData.uploadedBy) !== String(currentUserId) && user.role !== 'admin') {
-                    console.error('Authorization failed - redirecting to /servers');
                     router.push('/servers');
                     return;
                 }
@@ -77,7 +87,6 @@ export default function ServerSettingsPage() {
             setError(null);
             setSuccessMessage(null);
 
-            // Prepare data for API
             const data = {
                 name: updatedData.name,
                 url: updatedData.url,
@@ -86,7 +95,6 @@ export default function ServerSettingsPage() {
                 priority: updatedData.priority
             };
 
-            // Call API to update server
             const response = await apiRequest(`/api/servers/${serverId}`, {
                 method: 'PATCH',
                 body: JSON.stringify(data)
@@ -96,13 +104,12 @@ export default function ServerSettingsPage() {
                 throw new Error(response.message || 'Failed to update server');
             }
 
-            // Update local state
             setServer({
                 ...server,
                 ...data
             });
 
-            setSuccessMessage('Server details updated successfully');
+            setSuccessMessage('Server details saved.');
         } catch (err) {
             console.error('Error updating server:', err);
             setError(err.message || 'Failed to update server');
@@ -119,7 +126,6 @@ export default function ServerSettingsPage() {
             setError(null);
             setSuccessMessage(null);
 
-            // Prepare data for API
             const data = {
                 monitoring: {
                     frequency: updatedData.checkFrequency,
@@ -145,7 +151,6 @@ export default function ServerSettingsPage() {
                 contactPhones: updatedData.phones || []
             };
 
-            // Call API to update server
             const response = await apiRequest(`/api/servers/${serverId}`, {
                 method: 'PATCH',
                 body: JSON.stringify(data)
@@ -155,13 +160,12 @@ export default function ServerSettingsPage() {
                 throw new Error(response.message || 'Failed to update monitoring settings');
             }
 
-            // Update local state
             setServer({
                 ...server,
                 ...data
             });
 
-            setSuccessMessage('Monitoring settings updated successfully');
+            setSuccessMessage('Monitoring settings saved.');
         } catch (err) {
             console.error('Error updating monitoring settings:', err);
             setError(err.message || 'Failed to update monitoring settings');
@@ -170,14 +174,21 @@ export default function ServerSettingsPage() {
         }
     };
 
-    const handleDeleteServer = async () => {
+    // Stable identity: the Dialog re-focuses its panel whenever onClose changes
+    const closeDeleteDialog = useCallback(() => {
+        if (saving) return;
+        setDeleteConfirmOpen(false);
+        setDeleteInput('');
+    }, [saving]);
+
+    const handleDeleteServer = async (e) => {
+        e?.preventDefault();
         if (!server || deleteInput !== server.name) return;
 
         try {
             setSaving(true);
             setError(null);
 
-            // Call API to delete server
             const response = await apiRequest(`/api/servers/${serverId}`, {
                 method: 'DELETE'
             });
@@ -192,6 +203,7 @@ export default function ServerSettingsPage() {
             setError(err.message || 'Failed to delete server');
             setSaving(false);
             setDeleteConfirmOpen(false);
+            setDeleteInput('');
         }
     };
 
@@ -202,7 +214,6 @@ export default function ServerSettingsPage() {
         return {
             name: server.name,
             url: server.url,
-            type: server.type || 'website',
             type: server.type || 'website',
             description: server.description || '',
             priority: server.priority || 'medium'
@@ -234,220 +245,242 @@ export default function ServerSettingsPage() {
         };
     };
 
-    // Format timestamp to readable date
-    const formatDate = (timestamp) => {
-        if (!timestamp) return 'N/A';
-
-        const date = new Date(timestamp);
-        return date.toLocaleString();
+    // Arrow keys move between tabs, as in the WAI-ARIA tabs pattern
+    const onTabKeyDown = (e, index) => {
+        let next = null;
+        if (e.key === 'ArrowRight') next = (index + 1) % TABS.length;
+        if (e.key === 'ArrowLeft') next = (index - 1 + TABS.length) % TABS.length;
+        if (e.key === 'Home') next = 0;
+        if (e.key === 'End') next = TABS.length - 1;
+        if (next === null) return;
+        e.preventDefault();
+        setActiveTab(TABS[next].id);
+        tabRefs.current[TABS[next].id]?.focus();
     };
 
-    // Render loading state
+    const switchTab = (id) => {
+        setActiveTab(id);
+        setSuccessMessage(null);
+    };
+
+    const backLink = (
+        <Button asChild variant="ghost" size="sm">
+            <Link href="/servers">
+                <ArrowLeft weight="light" />
+                Back to servers
+            </Link>
+        </Button>
+    );
+
     if (loading) {
         return (
-            <div className="text-white container mx-auto px-4 py-8 max-w-4xl">
-                <div className="flex justify-center p-8">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <PageContainer>
+                <div className="mx-auto max-w-3xl space-y-8" role="status" aria-label="Loading server">
+                    <Skeleton className="h-8 w-40" />
+                    <Skeleton className="h-14 w-80" />
+                    <Skeleton className="h-11 w-full max-w-md rounded-full" />
+                    <Skeleton className="h-[26rem] rounded-[1.375rem]" />
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
-    // Render error state
     if (error && !server) {
         return (
-            <div className="text-white container mx-auto px-4 py-8 max-w-4xl">
-                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-6 text-center">
-                    <AlertTriangle className="mx-auto text-red-500 mb-4" size={48} />
-                    <h2 className="text-xl font-semibold text-white mb-2">Error Loading Server</h2>
-                    <p className="text-red-200 mb-4">{error}</p>
-                    <Link href="/servers">
-                        <button className="bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg text-sm px-5 py-2.5">
-                            Back to Servers
-                        </button>
-                    </Link>
+            <PageContainer>
+                <div className="mx-auto max-w-3xl">
+                    <div className="bezel-sm">
+                        <div className="bezel-sm-core">
+                            <EmptyState
+                                icon={WarningCircle}
+                                title="We couldn’t load this server"
+                                description={error}
+                                action={
+                                    <Button asChild variant="outline">
+                                        <Link href="/servers">
+                                            <ArrowLeft weight="light" />
+                                            Back to servers
+                                        </Link>
+                                    </Button>
+                                }
+                            />
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </PageContainer>
         );
     }
 
     return (
-        <div className="text-white container mx-auto px-4 py-8 max-w-4xl">
-            <div className="flex justify-between items-center mb-8">
-                <div className="flex items-center">
-                    <h1 className="text-2xl font-bold">Server Settings</h1>
-                </div>
-                <Link href={`/servers`} className="flex items-center text-blue-400 hover:text-blue-300">
-                    <ArrowLeft size={16} className="mr-1" />
-                    Back to Servers
-                </Link>
-            </div>
-
-            {/* Server overview */}
-            <div className="bg-gray-800 rounded-lg p-4 mb-6">
-                <div className="flex justify-between items-start">
-                    <div className="flex items-center">
-                        <div className="bg-gray-700 p-2 rounded-lg mr-3">
-                            <ServerIcon size={24} className="text-blue-400" />
-                        </div>
-                        <div>
-                            <h2 className="text-xl font-medium text-white">{server?.name}</h2>
-                            <p className="text-sm text-gray-400">{server?.url}</p>
-                        </div>
-                    </div>
-                    <div className="text-sm text-gray-400 flex items-center">
-                        <Calendar size={14} className="mr-1" />
-                        Added: {formatDate(server?.uploadedAt || server?.createdAt)}
-                    </div>
-                </div>
-            </div>
-
-            {/* Success message */}
-            {successMessage && (
-                <div className="bg-green-900/30 border border-green-600/50 rounded-lg p-3 mb-4 flex items-start">
-                    <Check className="text-green-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                    <p className="text-green-200 text-sm">{successMessage}</p>
-                </div>
-            )}
-
-            {/* Error message */}
-            {error && (
-                <div className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4 flex items-start">
-                    <AlertTriangle className="text-red-500 mr-2 flex-shrink-0 mt-0.5" size={16} />
-                    <p className="text-red-200 text-sm">{error}</p>
-                </div>
-            )}
-
-            {/* Tab navigation */}
-            <div className="flex border-b border-gray-700 mb-6">
-                <button
-                    className={`py-3 px-4 font-medium text-sm ${activeTab === 'general'
-                        ? 'text-blue-400 border-b-2 border-blue-400'
-                        : 'text-gray-400 hover:text-gray-300'
-                        }`}
-                    onClick={() => setActiveTab('general')}
-                >
-                    General Settings
-                </button>
-                <button
-                    className={`py-3 px-4 font-medium text-sm ${activeTab === 'monitoring'
-                        ? 'text-blue-400 border-b-2 border-blue-400'
-                        : 'text-gray-400 hover:text-gray-300'
-                        }`}
-                    onClick={() => setActiveTab('monitoring')}
-                >
-                    Monitoring & Alerts
-                </button>
-                <button
-                    className={`py-3 px-4 font-medium text-sm ${activeTab === 'danger'
-                        ? 'text-red-400 border-b-2 border-red-400'
-                        : 'text-gray-400 hover:text-gray-300'
-                        }`}
-                    onClick={() => setActiveTab('danger')}
-                >
-                    Danger Zone
-                </button>
-            </div>
-
-            {/* Tab content */}
-            <div>
-                {activeTab === 'general' && (
-                    <ServerForm
-                        onSubmit={handleServerUpdate}
-                        loading={saving}
-                        error={null}
-                        initialData={getServerFormData()}
-                        userPlan={user?.subscription?.plan || 'free'}
-                        serverCount={1}
-                        maxServers={10}
-                        isEdit={true}
-                    />
-                )}
-
-                {activeTab === 'monitoring' && (
-                    <MonitoringForm
-                        onSave={handleMonitoringUpdate}
-                        initialData={getMonitoringFormData()}
-                        isLoading={saving}
-                    />
-                )}
-
-                {activeTab === 'danger' && (
-                    <div className="bg-gray-800 rounded-lg p-6">
-                        <h2 className="text-xl font-semibold text-white mb-6">Danger Zone</h2>
-
-                        <div className="bg-red-900/20 border border-red-600/40 rounded-lg p-4">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <h3 className="font-medium text-red-300">Delete This Server</h3>
-                                    <p className="text-sm text-gray-400 mt-1">
-                                        Once deleted, this server and all its monitoring data will be permanently removed.
-                                        This action cannot be undone.
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={() => setDeleteConfirmOpen(true)}
-                                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                                >
-                                    Delete Server
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Delete confirmation modal */}
-            {deleteConfirmOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
-                        <h3 className="text-xl font-semibold text-white mb-4">Confirm Deletion</h3>
-                        <p className="text-gray-300 mb-4">
-                            This action cannot be undone. All monitoring data for this server will be permanently deleted.
-                        </p>
-                        <p className="text-gray-300 mb-4">
-                            Type <span className="font-mono bg-gray-700 px-1 py-0.5 rounded">{server?.name}</span> to confirm.
-                        </p>
-
-                        <input
-                            type="text"
-                            value={deleteInput}
-                            onChange={(e) => setDeleteInput(e.target.value)}
-                            placeholder="Enter server name"
-                            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white mb-4"
-                        />
-
-                        <div className="flex justify-end space-x-3">
-                            <button
-                                onClick={() => setDeleteConfirmOpen(false)}
-                                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+        <PageContainer>
+            <div className="mx-auto max-w-3xl space-y-8">
+                <PageHeader
+                    eyebrow="Server settings"
+                    title={server?.name}
+                    description={
+                        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <a
+                                href={toHref(server?.url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 font-mono text-[13px] transition-colors duration-300 ease-fluid hover:text-primary"
                             >
-                                Cancel
+                                {displayUrl(server?.url)}
+                                <ArrowSquareOut weight="light" className="size-3.5" />
+                                <span className="sr-only">(opens in a new tab)</span>
+                            </a>
+                            {(server?.uploadedAt || server?.createdAt) && (
+                                <>
+                                    <span aria-hidden="true">·</span>
+                                    <span>Added {formatDateTime(server?.uploadedAt || server?.createdAt)}</span>
+                                </>
+                            )}
+                        </span>
+                    }
+                    actions={
+                        <>
+                            {server?.status && <StatusBadge status={server.status} />}
+                            {backLink}
+                        </>
+                    }
+                />
+
+                {successMessage && <Alert tone="success">{successMessage}</Alert>}
+                {error && (
+                    <Alert tone="error" title="Something went wrong">
+                        {error}
+                    </Alert>
+                )}
+
+                {/* Tabs */}
+                <div role="tablist" aria-label="Server settings sections" className="flex max-w-full gap-1 overflow-x-auto rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08] sm:inline-flex">
+                    {TABS.map((tab, i) => {
+                        const on = activeTab === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                ref={(el) => { tabRefs.current[tab.id] = el; }}
+                                id={`tab-${tab.id}`}
+                                role="tab"
+                                type="button"
+                                aria-selected={on}
+                                aria-controls={`panel-${tab.id}`}
+                                tabIndex={on ? 0 : -1}
+                                onClick={() => switchTab(tab.id)}
+                                onKeyDown={(e) => onTabKeyDown(e, i)}
+                                className={cn(
+                                    'min-h-10 shrink-0 whitespace-nowrap rounded-full px-4 text-sm font-medium transition-[background-color,color] duration-500 ease-fluid',
+                                    on
+                                        ? tab.danger
+                                            ? 'bg-destructive/15 text-destructive'
+                                            : 'bg-white/[0.1] text-foreground'
+                                        : tab.danger
+                                            ? 'text-destructive/80 hover:text-destructive'
+                                            : 'text-muted-foreground hover:text-foreground'
+                                )}
+                            >
+                                {tab.label}
                             </button>
-                            <button
-                                onClick={handleDeleteServer}
-                                disabled={deleteInput !== server?.name || saving}
-                                className={`${deleteInput === server?.name && !saving
-                                    ? 'bg-red-600 hover:bg-red-700'
-                                    : 'bg-red-800 cursor-not-allowed'
-                                    } text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center`}
-                            >
+                        );
+                    })}
+                </div>
+
+                {/* Tab panels */}
+                <div role="tabpanel" id={`panel-${activeTab}`} aria-labelledby={`tab-${activeTab}`} tabIndex={0} className="outline-none">
+                    {activeTab === 'general' && (
+                        <Reveal key="general">
+                            <ServerForm
+                                onSubmit={handleServerUpdate}
+                                loading={saving}
+                                error={null}
+                                initialData={getServerFormData()}
+                                userPlan={user?.subscription?.plan || 'free'}
+                                serverCount={1}
+                                maxServers={10}
+                                isEdit={true}
+                            />
+                        </Reveal>
+                    )}
+
+                    {activeTab === 'monitoring' && (
+                        <Reveal key="monitoring">
+                            <MonitoringForm
+                                onSave={handleMonitoringUpdate}
+                                initialData={getMonitoringFormData()}
+                                isLoading={saving}
+                                submitLabel="Save changes"
+                            />
+                        </Reveal>
+                    )}
+
+                    {activeTab === 'danger' && (
+                        <Reveal key="danger">
+                            <div className="rounded-[1.375rem] bg-destructive/[0.04] p-1 ring-1 ring-destructive/25">
+                                <div className="rounded-[calc(1.375rem-0.25rem)] bg-card p-6 shadow-[inset_0_1px_1px_oklch(1_0_0/0.06)] sm:p-8">
+                                    <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="max-w-[52ch] space-y-1.5">
+                                            <h2 className="font-display text-xl font-medium tracking-tight">Delete this server</h2>
+                                            <p className="text-sm leading-relaxed text-muted-foreground">
+                                                Monitoring stops immediately and all check history for {server?.name} is permanently removed. This can’t be undone.
+                                            </p>
+                                        </div>
+                                        <Button variant="destructive" size="lg" onClick={() => setDeleteConfirmOpen(true)} className="shrink-0">
+                                            <Trash weight="light" />
+                                            Delete server
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </Reveal>
+                    )}
+                </div>
+
+                <Dialog
+                    open={deleteConfirmOpen}
+                    onClose={closeDeleteDialog}
+                    title="Delete this server?"
+                    description="All monitoring data for this server will be permanently deleted."
+                    footer={
+                        <>
+                            <Button type="button" variant="ghost" onClick={closeDeleteDialog} disabled={saving}>
+                                Keep server
+                            </Button>
+                            <Button type="submit" form="delete-server-form" variant="destructive" disabled={deleteInput !== server?.name || saving}>
                                 {saving ? (
                                     <>
-                                        <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                                        Deleting...
+                                        <CircleNotch weight="light" className="animate-spin" />
+                                        Deleting
                                     </>
                                 ) : (
                                     <>
-                                        <Trash2 size={16} className="mr-2" />
-                                        Delete Permanently
+                                        <Trash weight="light" />
+                                        Delete permanently
                                     </>
                                 )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+                            </Button>
+                        </>
+                    }
+                >
+                    <form id="delete-server-form" onSubmit={handleDeleteServer}>
+                        <Field
+                            id="delete-confirm"
+                            label={
+                                <>
+                                    Type <span className="rounded-md bg-white/[0.07] px-1.5 py-0.5 font-mono text-[13px]">{server?.name}</span> to confirm
+                                </>
+                            }
+                        >
+                            <Input
+                                id="delete-confirm"
+                                value={deleteInput}
+                                onChange={(e) => setDeleteInput(e.target.value)}
+                                placeholder="Server name"
+                                autoComplete="off"
+                            />
+                        </Field>
+                    </form>
+                </Dialog>
+            </div>
+        </PageContainer>
     );
 }

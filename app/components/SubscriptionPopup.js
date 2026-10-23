@@ -1,191 +1,102 @@
+'use client';
+
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Check, Zap, Server, Shield, Clock } from 'lucide-react';
 import Link from 'next/link';
+import { Check } from '@phosphor-icons/react';
+import { TIERS, BILLING, planId, getPlan, featureList, planLabel, serverLimitLabel } from './planCatalog';
+import { Dialog } from '@/components/ui/dialog';
+import { Button, ButtonArrow } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
+// Props are unchanged: isOpen, onClose, currentPlan, serverCount, maxServers.
 const SubscriptionPopup = ({ isOpen, onClose, currentPlan = 'free', serverCount = 0, maxServers = 1 }) => {
-    // Define subscription plans for the popup
-    const plans = [
-        {
-            id: 'monthly',
-            title: 'MONTHLY',
-            price: '$10',
-            period: 'per month',
-            features: [
-                '10 server monitoring',
-                'Email alerts',
-                'Custom monitoring schedules',
-                '24-hour support response'
-            ],
-            recommended: false,
-            buttonLabel: 'Choose Monthly'
-        },
-        {
-            id: 'half-yearly',
-            title: 'HALF-YEARLY',
-            price: '$55',
-            period: 'per 6 months (save 8.3%)',
-            features: [
-                '15 server monitoring',
-                '1-minute check frequency',
-                'Advanced reporting',
-                '12-hour support response'
-            ],
-            recommended: true,
-            buttonLabel: 'Choose Half-Yearly'
-        },
-        {
-            id: 'yearly',
-            title: 'YEARLY',
-            price: '$105',
-            period: 'per year (save 12.5%)',
-            features: [
-                '25 server monitoring',
-                'Priority support (4-hour response)',
-                'Historical data analysis',
-                'Expert technical assistance'
-            ],
-            recommended: false,
-            buttonLabel: 'Choose Yearly'
-        }
-    ];
+    const [tier, setTier] = useState('pro');
+    const [billing, setBilling] = useState('monthly');
 
-    // Get the current selected plan (default to half-yearly as "recommended")
-    const [selectedPlan, setSelectedPlan] = useState('half-yearly');
-
-    // Handle plan selection
-    const handleSelectPlan = (planId) => {
-        setSelectedPlan(planId);
-    };
-
-    // If popup is not open, don't render anything
-    if (!isOpen) return null;
+    const selectedPlan = planId(tier, billing);
 
     return (
-        <AnimatePresence>
-            <motion.div
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={onClose}
-            >
-                <motion.div
-                    className="relative w-full max-w-4xl bg-gray-800 rounded-xl shadow-2xl overflow-hidden"
-                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                    transition={{ type: "spring", damping: 25 }}
-                    onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+        <Dialog
+            open={!!isOpen}
+            onClose={onClose}
+            title={'You’ve reached your server limit'}
+            description={`You’re using ${serverCount} of ${serverLimitLabel(maxServers)} server slots on the ${planLabel(currentPlan)} plan. Pick a plan with more room.`}
+            className="max-w-3xl"
+            footer={
+                <>
+                    <Button variant="ghost" onClick={onClose}>Not now</Button>
+                    <Button asChild>
+                        <Link href={`/subscription?plan=${selectedPlan}`}>
+                            Continue with {planLabel(selectedPlan)}
+                            <ButtonArrow />
+                        </Link>
+                    </Button>
+                </>
+            }
+        >
+            <div className="max-h-[56dvh] space-y-5 overflow-y-auto pr-1">
+                <div
+                    role="radiogroup"
+                    aria-label="Billing period"
+                    className="relative inline-grid grid-cols-2 rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08]"
                 >
-                    {/* Close button */}
-                    <button
-                        onClick={onClose}
-                        className="absolute right-4 top-4 text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-700 transition-colors z-10"
-                        aria-label="Close popup"
-                    >
-                        <X size={24} />
-                    </button>
+                    <span
+                        aria-hidden="true"
+                        className="absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-full bg-primary transition-transform duration-500 ease-fluid"
+                        style={{ transform: billing === 'yearly' ? 'translateX(100%)' : 'translateX(0)' }}
+                    />
+                    {BILLING.map((v) => (
+                        <button
+                            key={v}
+                            type="button"
+                            role="radio"
+                            aria-checked={billing === v}
+                            onClick={() => setBilling(v)}
+                            className={cn('relative min-h-10 rounded-full px-5 py-2 text-sm font-medium capitalize transition-colors duration-500 ease-fluid', billing === v ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}
+                        >
+                            {v}
+                        </button>
+                    ))}
+                </div>
 
-                    {/* Header */}
-                    <div className="bg-gradient-to-r from-blue-700 to-indigo-800 p-6 text-white">
-                        <h2 className="text-2xl font-bold mb-2">Upgrade Your Plan</h2>
-                        <p className="text-blue-100 max-w-2xl">
-                            You're currently using {serverCount} of {maxServers} server slots on your {currentPlan.toUpperCase()} plan.
-                            Upgrade now to monitor more servers and unlock premium features.
-                        </p>
-                    </div>
-
-                    {/* Plan selection */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6">
-                        {plans.map((plan) => (
-                            <motion.div
-                                key={plan.id}
-                                className={`border rounded-xl p-5 cursor-pointer transition-all ${selectedPlan === plan.id
-                                    ? 'border-blue-500 bg-blue-900/20'
-                                    : 'border-gray-700 hover:border-gray-500'
-                                    }`}
-                                whileHover={{ y: -5, transition: { duration: 0.2 } }}
-                                onClick={() => handleSelectPlan(plan.id)}
-                            >
-                                {plan.recommended && (
-                                    <div className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full inline-block mb-2">
-                                        RECOMMENDED
-                                    </div>
+                <div role="radiogroup" aria-label="Plan" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    {TIERS.map((t) => {
+                        const id = planId(t.key, billing);
+                        const p = getPlan(id);
+                        const selected = tier === t.key;
+                        return (
+                            <button
+                                key={t.key}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                onClick={() => setTier(t.key)}
+                                className={cn(
+                                    'flex flex-col rounded-2xl p-4 text-left ring-1 transition-[background-color,box-shadow] duration-500 ease-fluid',
+                                    selected ? 'bg-primary/[0.08] ring-2 ring-primary/50' : 'bg-white/[0.03] ring-white/10 hover:bg-white/[0.06]'
                                 )}
-                                <h3 className="text-xl font-bold text-white">{plan.title}</h3>
-                                <div className="flex items-baseline mt-2 mb-4">
-                                    <span className="text-3xl font-bold text-white">{plan.price}</span>
-                                    <span className="text-gray-400 ml-2">{plan.period}</span>
-                                </div>
-                                <ul className="space-y-3 mb-6">
-                                    {plan.features.map((feature, index) => (
-                                        <li key={index} className="flex items-start">
-                                            <Check size={16} className="text-green-500 mr-2 mt-1 flex-shrink-0" />
-                                            <span className="text-gray-300">{feature}</span>
+                            >
+                                <span className="flex h-6 items-center justify-between">
+                                    <span className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t.name}</span>
+                                    {t.recommended && <Badge>Most popular</Badge>}
+                                </span>
+                                <span className="mt-3 font-display text-3xl font-medium tracking-tight tabular-nums">{p.price}</span>
+                                <span className="mt-0.5 text-[13px] text-muted-foreground">{p.period}</span>
+                                <ul className="mt-4 space-y-2 border-t border-white/[0.07] pt-4">
+                                    {featureList(id).slice(0, 4).map((text) => (
+                                        <li key={text} className="flex items-start gap-2 text-[13px] text-foreground/90">
+                                            <Check weight="light" className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                                            {text}
                                         </li>
                                     ))}
                                 </ul>
-                                <div
-                                    className={`rounded-full h-5 w-5 border absolute top-4 right-4 flex items-center justify-center ${selectedPlan === plan.id ? 'border-blue-500 bg-blue-500' : 'border-gray-600'
-                                        }`}
-                                >
-                                    {selectedPlan === plan.id && <Check size={12} className="text-white" />}
-                                </div>
-                            </motion.div>
-                        ))}
-                    </div>
-
-                    {/* Feature comparison */}
-                    <div className="px-6 pb-6">
-                        <h3 className="text-lg font-semibold text-white mb-4">Why Upgrade?</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-gray-700 p-4 rounded-lg">
-                                <div className="flex items-center mb-2">
-                                    <Server className="text-blue-400 mr-2" size={20} />
-                                    <span className="text-white font-medium">More Servers</span>
-                                </div>
-                                <p className="text-gray-300 text-sm">Monitor up to 25 servers simultaneously with our premium plans</p>
-                            </div>
-                            <div className="bg-gray-700 p-4 rounded-lg">
-                                <div className="flex items-center mb-2">
-                                    <Clock className="text-blue-400 mr-2" size={20} />
-                                    <span className="text-white font-medium">Faster Checks</span>
-                                </div>
-                                <p className="text-gray-300 text-sm">Check your servers as frequently as every minute for quicker issue detection</p>
-                            </div>
-                            <div className="bg-gray-700 p-4 rounded-lg">
-                                <div className="flex items-center mb-2">
-                                    <Shield className="text-blue-400 mr-2" size={20} />
-                                    <span className="text-white font-medium">Advanced Alerts</span>
-                                </div>
-                                <p className="text-gray-300 text-sm">Get SMS notifications and set up custom alert conditions</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="border-t border-gray-700 p-6 flex flex-col sm:flex-row justify-between items-center bg-gray-900">
-                        <p className="text-gray-400 text-sm mb-4 sm:mb-0">No credit card required. Upgrade or downgrade anytime.</p>
-                        <div className="flex space-x-3">
-                            <button
-                                onClick={onClose}
-                                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-                            >
-                                Keep Free Plan
                             </button>
-                            <Link
-                                href="/subscription?plan=${selectedPlan}"
-                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg flex items-center"
-                            >
-                                <Zap size={16} className="mr-2" />
-                                Upgrade Now
-                            </Link>
-                        </div>
-                    </div>
-                </motion.div>
-            </motion.div>
-        </AnimatePresence>
+                        );
+                    })}
+                </div>
+            </div>
+        </Dialog>
     );
 };
 

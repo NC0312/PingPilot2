@@ -1,7 +1,7 @@
 export default function AuthLayout({ children }) {
     return (
-        <div className="min-h-screen bg-[#031D27]">
+        <main id="main-content" className="min-h-[100dvh]">
             {children}
-        </div>
+        </main>
     );
 }
