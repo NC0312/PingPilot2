@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from '@/app/context/AuthContext';
+import API_BASE_URL from '@/lib/apiConfig';
 
 const SocketContext = createContext();
 
@@ -22,7 +23,7 @@ export const SocketProvider = ({ children }) => {
     useEffect(() => {
         if (!signedIn) return undefined;
 
-        const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const socketUrl = API_BASE_URL || 'http://localhost:5000';
 
         const socketInstance = io(socketUrl, {
             transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
