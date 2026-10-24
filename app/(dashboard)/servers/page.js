@@ -32,7 +32,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge, StatusDot } from '@/components/ui/status';
 import { Reveal } from '@/components/ui/reveal';
 import TrialNotice from '@/app/components/TrialNotice';
-import { displayUrl, toHref, timeAgo, formatPhone } from '@/lib/time';
+import { displayUrl, toHref, timeAgo, formatPhone, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -179,14 +179,6 @@ function Legend() {
         </div>
     );
 }
-
-const formatSpan = (ms) => {
-    const minutes = Math.max(1, Math.round(ms / 60000));
-    if (minutes < 60) return `${minutes} min`;
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return m ? `${h} h ${m} min` : `${h} h`;
-};
 
 // Runs of failed checks become incidents. A run ends at the next successful check; one still open is ongoing.
 const getIncidents = (data, frequency, downNow) => {
@@ -897,7 +889,12 @@ export default function EnhancedServersPage() {
                         {/* Incidents */}
                         <Reveal delay={160}>
                             <Panel>
-                                <h3 className="font-display text-xl font-medium tracking-tight">Incidents, last 24 hours</h3>
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <h3 className="font-display text-xl font-medium tracking-tight">Incidents, last 24 hours</h3>
+                                    <Button asChild variant="ghost" size="sm">
+                                        <Link href={`/incidents?server=${idOf(s)}&days=30`}>View all incidents</Link>
+                                    </Button>
+                                </div>
                                 {incidents.length === 0 ? (
                                     <p className="mt-4 flex items-center gap-2.5 text-sm text-muted-foreground">
                                         <CheckCircle weight="light" className={cn('size-5', hasChecks ? 'text-success' : 'text-muted-foreground/60')} />

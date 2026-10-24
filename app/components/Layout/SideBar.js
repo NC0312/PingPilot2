@@ -19,6 +19,7 @@ import {
     X,
     Plus,
     UserCircle,
+    Siren,
 } from '@phosphor-icons/react';
 import { Brand } from '@/components/ui/brand';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ import { Button } from '@/components/ui/button';
 const MONITOR_ITEMS = [
     { name: 'Dashboard', icon: SquaresFour, href: '/dashboard' },
     { name: 'Servers', icon: HardDrives, href: '/servers' },
+    { name: 'Incidents', icon: Siren, href: '/incidents' },
 ];
 // Everything about you rather than your servers. Admins have no plan to manage, so theirs is shorter.
 const ACCOUNT_ITEM = { name: 'Account', icon: UserCircle, href: '/account' };
