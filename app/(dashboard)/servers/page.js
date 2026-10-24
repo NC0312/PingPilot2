@@ -592,8 +592,9 @@ export default function EnhancedServersPage() {
         ? `Response time over the last 24 hours. Average ${responseStats.avg} milliseconds, fastest ${responseStats.min}, slowest ${responseStats.max}, ${plural(countIncidents(24), 'incident')}.`
         : 'No response time data yet.';
 
+    // The sidebar carries this button on larger screens; the page header keeps it for small ones
     const addButton = (
-        <Button asChild>
+        <Button asChild className="md:hidden">
             <Link href="/servers/new">
                 <Plus weight="light" />
                 Add server

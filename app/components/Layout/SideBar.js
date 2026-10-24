@@ -17,20 +17,26 @@ import {
     SidebarSimple,
     List,
     X,
+    Plus,
+    UserCircle,
 } from '@phosphor-icons/react';
 import { Brand } from '@/components/ui/brand';
+import { Button } from '@/components/ui/button';
 
 // One destination per row. `match` decides the active state so nested routes keep their parent lit.
 const MONITOR_ITEMS = [
     { name: 'Dashboard', icon: SquaresFour, href: '/dashboard' },
     { name: 'Servers', icon: HardDrives, href: '/servers' },
 ];
+// Everything about you rather than your servers. Admins have no plan to manage, so theirs is shorter.
+const ACCOUNT_ITEM = { name: 'Account', icon: UserCircle, href: '/account' };
 const USER_ITEMS = [
+    { name: 'Plan & billing', icon: CreditCard, href: '/subscription' },
+    ACCOUNT_ITEM,
     { name: 'Support', icon: ChatCircleDots, href: '/support/tickets' },
-    { name: 'Plan', icon: CreditCard, href: '/subscription' },
 ];
 const ADMIN_ITEMS = [
-    { name: 'Overview', icon: ShieldCheck, href: '/admin', exact: true },
+    { name: 'Platform', icon: ShieldCheck, href: '/admin', exact: true },
     { name: 'Analytics', icon: ChartBar, href: '/admin/analytics' },
     { name: 'Users', icon: UsersThree, href: '/admin/users' },
     { name: 'Tickets', icon: Tray, href: '/admin/support' },
@@ -66,6 +72,26 @@ function NavItem({ item, collapsed, onNavigate }) {
     );
 }
 
+// Adding a server is the main thing people do here, so it is one click from every page.
+function AddServerButton({ collapsed, onNavigate }) {
+    const pathname = usePathname();
+    if (pathname === '/servers/new') return null;
+    return collapsed ? (
+        <Button asChild size="icon" className="mx-auto mt-3">
+            <Link href="/servers/new" onClick={onNavigate} aria-label="Add server" title="Add server">
+                <Plus weight="bold" />
+            </Link>
+        </Button>
+    ) : (
+        <Button asChild className="mt-3 w-full">
+            <Link href="/servers/new" onClick={onNavigate}>
+                <Plus weight="bold" />
+                Add server
+            </Link>
+        </Button>
+    );
+}
+
 function NavGroup({ label, items, collapsed, onNavigate }) {
     return (
         <div>
@@ -83,20 +109,28 @@ function NavGroup({ label, items, collapsed, onNavigate }) {
     );
 }
 
-function UserBlock({ user, collapsed, onLogout }) {
+function UserBlock({ user, collapsed, onLogout, onNavigate }) {
     const name = user?.displayName || user?.email || 'Account';
     const initial = name.trim().charAt(0).toUpperCase();
     return (
-        <div className={`flex items-center gap-3 ${collapsed ? 'flex-col' : ''}`}>
-            <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/[0.07] font-display text-sm font-medium text-foreground ring-1 ring-white/10" aria-hidden="true">
-                {user?.photoURL ? <img src={user.photoURL} alt="" className="size-full object-cover" /> : initial}
-            </div>
-            {!collapsed && (
-                <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{name}</p>
-                    <p className="text-xs capitalize text-muted-foreground">{user?.role || 'user'}</p>
-                </div>
-            )}
+        <div className={`flex items-center gap-1 ${collapsed ? 'flex-col' : ''}`}>
+            <Link
+                href="/account"
+                onClick={onNavigate}
+                aria-label={`Account settings for ${name}`}
+                title={collapsed ? `${name}: account settings` : undefined}
+                className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl p-1 transition-colors duration-300 ease-fluid hover:bg-white/[0.05]"
+            >
+                <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/[0.07] font-display text-sm font-medium text-foreground ring-1 ring-white/10" aria-hidden="true">
+                    {user?.photoURL ? <img src={user.photoURL} alt="" className="size-full object-cover" /> : initial}
+                </span>
+                {!collapsed && (
+                    <span className="min-w-0 flex-1 text-left">
+                        <span className="block truncate text-sm font-medium">{name}</span>
+                        <span className="block text-xs capitalize text-muted-foreground">{user?.role || 'user'}</span>
+                    </span>
+                )}
+            </Link>
             <button
                 type="button"
                 onClick={onLogout}
@@ -143,8 +177,8 @@ const SideBar = ({ collapsed = false, onToggle }) => {
     const isAdminUser = user?.role === 'admin';
     const groups = [
         { label: 'Monitor', items: MONITOR_ITEMS },
-        ...(user?.role === 'user' ? [{ label: 'Account', items: USER_ITEMS }] : []),
         ...(isAdminUser ? [{ label: 'Admin', items: ADMIN_ITEMS }] : []),
+        { label: 'Manage', items: isAdminUser ? [ACCOUNT_ITEM] : USER_ITEMS },
     ];
 
     const renderGroups = (isCollapsed, onNavigate) =>
@@ -185,6 +219,8 @@ const SideBar = ({ collapsed = false, onToggle }) => {
                                 <SidebarSimple weight="light" className="size-5 -scale-x-100" />
                             </button>
                         )}
+
+                        <AddServerButton collapsed={collapsed} />
 
                         <nav aria-label="Primary" className="-mx-1 mt-2 flex-1 overflow-y-auto overflow-x-hidden px-1">
                             {renderGroups(collapsed)}
@@ -233,11 +269,12 @@ const SideBar = ({ collapsed = false, onToggle }) => {
                             <X weight="light" className="size-5" />
                         </button>
                     </div>
-                    <nav aria-label="Mobile" className="mt-6 flex-1 overflow-y-auto">
+                    <AddServerButton collapsed={false} onNavigate={() => setMobileOpen(false)} />
+                    <nav aria-label="Mobile" className="mt-2 flex-1 overflow-y-auto">
                         {renderGroups(false, () => setMobileOpen(false))}
                     </nav>
                     <div className="border-t border-white/[0.07] pt-4">
-                        <UserBlock user={user} collapsed={false} onLogout={handleLogout} />
+                        <UserBlock user={user} collapsed={false} onLogout={handleLogout} onNavigate={() => setMobileOpen(false)} />
                     </div>
                 </div>
             </div>

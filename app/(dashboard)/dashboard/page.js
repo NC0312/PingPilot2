@@ -3,51 +3,88 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  HardDrives,
-  MagnifyingGlass,
-  ArrowsClockwise,
-  ArrowSquareOut,
   Plus,
-  Trash,
-  CaretUp,
-  CaretDown,
+  ArrowsClockwise,
+  CaretRight,
   CheckCircle,
   Timer,
   Pulse,
+  EnvelopeSimple,
+  ChartLineUp,
 } from '@phosphor-icons/react';
 import { useAuth } from '@/app/context/AuthContext';
 import { PageContainer } from '@/app/components/Layout/AppShell';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { PageHeader } from '@/components/ui/page-header';
-import { EmptyState } from '@/components/ui/empty-state';
-import { Alert } from '@/components/ui/alert';
-import { Dialog } from '@/components/ui/dialog';
-import { Skeleton } from '@/components/ui/skeleton';
-import { StatusBadge } from '@/components/ui/status';
-import { Reveal } from '@/components/ui/reveal';
 import TrialNotice from '@/app/components/TrialNotice';
-import { timeAgo, durationSince, displayUrl, toHref } from '@/lib/time';
-
-const FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'up', label: 'Operational' },
-  { key: 'down', label: 'Down' },
-];
+import { getPlanLimits } from '@/app/components/subscriptionPlans';
+import { planLabel } from '@/app/components/planCatalog';
+import { Button, ButtonArrow } from '@/components/ui/button';
+import { PageHeader } from '@/components/ui/page-header';
+import { Alert } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+import { StatusBadge, StatusDot } from '@/components/ui/status';
+import { Reveal } from '@/components/ui/reveal';
+import { timeAgo, durationSince, displayUrl } from '@/lib/time';
 
 const idOf = (s) => s._id || s.id;
+const STATUS_RANK = { down: 0, unknown: 1, up: 2 };
+
+// First run: nothing to show yet, so say what happens next instead of a wall of empty tiles.
+function GetStarted({ limits, plan, admin }) {
+  const steps = [
+    { icon: Plus, title: 'Add a website or API address', body: 'Paste the URL. A name is filled in for you.' },
+    { icon: EnvelopeSimple, title: 'We email you when it stops answering', body: 'Your account email is used by default. You can add more people or change this when you add the server.' },
+    { icon: ChartLineUp, title: 'Watch it here', body: 'Status, response time and every incident appear on the Servers page.' },
+  ];
+  const slots = limits?.maxServers;
+  return (
+    <Reveal>
+      <div className="bezel">
+        <div className="bezel-core grid gap-10 p-7 sm:p-10 lg:grid-cols-[1fr_1.1fr] lg:gap-14">
+          <div className="space-y-6">
+            <span className="eyebrow">Get started</span>
+            <h2 className="font-display text-4xl font-medium leading-[1.05] tracking-tight">Add your first server.</h2>
+            <p className="max-w-[44ch] text-[15px] leading-relaxed text-muted-foreground">
+              Ping Pilott checks it on a schedule and tells you the moment it stops responding.
+              {!admin && slots > 0 && Number.isFinite(slots) && (
+                <> Your {plan} plan includes {slots === 1 ? '1 server' : `${slots} servers`}.</>
+              )}
+            </p>
+            <Button asChild size="lg">
+              <Link href="/servers/new">
+                Add a server
+                <ButtonArrow />
+              </Link>
+            </Button>
+          </div>
+
+          <ol className="space-y-5">
+            {steps.map((step, i) => (
+              <li key={step.title} className="flex gap-4">
+                <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white/[0.05] text-primary ring-1 ring-white/10">
+                  <step.icon weight="light" className="size-5" />
+                </span>
+                <div>
+                  <p className="font-medium">
+                    <span className="mr-2 font-mono text-xs tabular-nums text-muted-foreground">0{i + 1}</span>
+                    {step.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </Reveal>
+  );
+}
 
 export default function DashboardPage() {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [sortConfig, setSortConfig] = useState({ key: 'status', direction: 'asc' });
   const [refreshing, setRefreshing] = useState(false);
   const [checking, setChecking] = useState({});
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting, setDeleting] = useState(false);
   const [userMap, setUserMap] = useState({});
 
   const { user, isAdmin, apiRequest } = useAuth();
@@ -64,7 +101,7 @@ export default function DashboardPage() {
 
       if (admin && list.length > 0) {
         try {
-          const usersResponse = await apiRequest('/api/users?limit=200', { method: 'GET' });
+          const usersResponse = await apiRequest('/api/users', { method: 'GET' });
           const map = {};
           (usersResponse.data?.users || []).forEach((u) => {
             const uid = u.id || u._id;
@@ -112,39 +149,14 @@ export default function DashboardPage() {
     return { total: servers.length, up, down, pending: servers.length - up - down, avg };
   }, [servers]);
 
-  const visible = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    let result = servers.filter((s) => {
-      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        s.name?.toLowerCase().includes(q) ||
-        s.url?.toLowerCase().includes(q) ||
-        s.description?.toLowerCase().includes(q) ||
-        (admin && ownerName(s).toLowerCase().includes(q))
-      );
-    });
-
-    const { key, direction } = sortConfig;
-    const dir = direction === 'asc' ? 1 : -1;
-    const rank = { down: 0, unknown: 1, up: 2 };
-    const value = (s) => {
-      if (key === 'lastChecked') return s.lastChecked ? new Date(s.lastChecked).getTime() : 0;
-      if (key === 'status') return rank[s.status] ?? 1;
-      if (key === 'responseTime') return s.responseTime ?? Infinity;
-      if (key === 'owner') return ownerName(s).toLowerCase();
-      return (s[key] || '').toString().toLowerCase();
-    };
-    result = [...result].sort((a, b) => {
-      const av = value(a);
-      const bv = value(b);
-      return av < bv ? -dir : av > bv ? dir : 0;
-    });
-    return result;
-  }, [servers, searchTerm, statusFilter, sortConfig, admin, ownerName]);
-
-  const handleSort = (key) =>
-    setSortConfig((prev) => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
+  // Problems first, then anything still waiting for a first check, then healthy servers
+  const sorted = useMemo(
+    () =>
+      [...servers].sort(
+        (a, b) => (STATUS_RANK[a.status] ?? 1) - (STATUS_RANK[b.status] ?? 1) || (a.name || '').localeCompare(b.name || '')
+      ),
+    [servers]
+  );
 
   const handleCheckServer = async (serverId) => {
     setChecking((c) => ({ ...c, [serverId]: true }));
@@ -168,65 +180,13 @@ export default function DashboardPage() {
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      const id = idOf(deleteTarget);
-      await apiRequest(`/api/servers/${id}`, { method: 'DELETE' });
-      setServers((prev) => prev.filter((s) => idOf(s) !== id));
-      setDeleteTarget(null);
-    } catch (err) {
-      console.error('Error deleting server:', err);
-      setDeleteTarget(null);
-      setError('We couldn’t delete that server. Try again.');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   const downServers = servers.filter((s) => s.status === 'down');
   const barTotal = counts.total || 1;
-
-  // Plain render functions, not components: a component defined here would be a new type on every render,
-  // remounting the buttons and dropping keyboard focus after each click.
-  const renderSortHeader = (k, children, className = '') => {
-    const active = sortConfig.key === k;
-    return (
-      <th key={k} scope="col" aria-sort={active ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={`px-5 py-3 text-left font-medium ${className}`}>
-        <button
-          type="button"
-          onClick={() => handleSort(k)}
-          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md text-[11px] uppercase tracking-[0.14em] text-muted-foreground transition-colors duration-300 ease-fluid hover:text-foreground"
-        >
-          {children}
-          {active ? (
-            sortConfig.direction === 'asc' ? <CaretUp weight="bold" className="size-3 text-primary" /> : <CaretDown weight="bold" className="size-3 text-primary" />
-          ) : (
-            <span className="size-3" />
-          )}
-        </button>
-      </th>
-    );
-  };
-
-  const renderRowActions = (server) => {
-    const id = idOf(server);
-    return (
-      <div className="flex items-center justify-end gap-1">
-        <Button variant="ghost" size="sm" onClick={() => handleCheckServer(id)} disabled={checking[id]} aria-label={`Check ${server.name} now`}>
-          <ArrowsClockwise weight="light" className={checking[id] ? 'animate-spin' : ''} />
-          {checking[id] ? 'Checking' : 'Check now'}
-        </Button>
-        <Button asChild variant="ghost" size="sm">
-          <Link href={`/servers/${id}/settings`} aria-label={`Settings for ${server.name}`}>Settings</Link>
-        </Button>
-        <Button variant="ghost" size="icon-sm" onClick={() => setDeleteTarget(server)} aria-label={`Delete ${server.name}`} className="hover:bg-destructive/12 hover:text-destructive">
-          <Trash weight="light" />
-        </Button>
-      </div>
-    );
-  };
+  const limits = user ? getPlanLimits(user) : null;
+  const planName = admin ? 'Admin' : planLabel(user?.subscription?.plan);
+  const firstRun = !loading && !error && servers.length === 0;
+  const maxServers = limits?.maxServers;
+  const showUsage = !admin && Number.isFinite(maxServers) && maxServers > 0;
 
   return (
     <PageContainer className="space-y-10">
@@ -235,12 +195,12 @@ export default function DashboardPage() {
         title="Dashboard"
         description={
           loading
-            ? 'Loading your monitors.'
+            ? 'Loading your servers.'
             : counts.total === 0
-              ? 'Add a server to start monitoring it.'
+              ? 'Nothing to watch yet.'
               : counts.down > 0
-                ? `${counts.down} of ${counts.total} monitors ${counts.down === 1 ? 'is' : 'are'} down right now.`
-                : `All ${counts.total} monitors are responding.`
+                ? `${counts.down} of ${counts.total} servers ${counts.down === 1 ? 'is' : 'are'} down right now.`
+                : `All ${counts.total} servers are responding.`
         }
         actions={
           <>
@@ -248,7 +208,8 @@ export default function DashboardPage() {
               <ArrowsClockwise weight="light" className={refreshing ? 'animate-spin' : ''} />
               Refresh
             </Button>
-            <Button asChild>
+            {/* The sidebar has this button on larger screens; keep it here only where the sidebar is tucked away */}
+            <Button asChild className="md:hidden">
               <Link href="/servers/new">
                 <Plus weight="light" />
                 Add server
@@ -257,6 +218,8 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      <TrialNotice servers={servers} />
 
       {error && (
         <Alert
@@ -268,261 +231,172 @@ export default function DashboardPage() {
         </Alert>
       )}
 
-      {!loading && <TrialNotice servers={servers} />}
+      {firstRun && <GetStarted limits={limits} plan={planName} admin={admin} />}
 
-      {/* Summary bento */}
-      <section aria-label="Summary" className="grid grid-cols-1 gap-4 md:grid-cols-12">
-        <Reveal className="md:col-span-6">
-          <div className="bezel-sm h-full">
-            <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Fleet status</p>
+      {!firstRun && (
+        <>
+          {/* Summary bento */}
+          <section aria-label="Summary" className="grid grid-cols-1 gap-4 md:grid-cols-12">
+            <Reveal className="md:col-span-6">
+              <div className="bezel-sm h-full">
+                <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Fleet status</p>
+                      {loading ? (
+                        <Skeleton className="mt-3 h-10 w-44" />
+                      ) : (
+                        <p className="mt-2 font-display text-4xl font-medium tracking-tight tabular-nums">
+                          {counts.up}
+                          <span className="text-muted-foreground"> / {counts.total}</span>
+                          <span className="ml-2 text-base font-normal text-muted-foreground">operational</span>
+                        </p>
+                      )}
+                    </div>
+                    <CheckCircle weight="light" className={`size-6 ${counts.down > 0 ? 'text-muted-foreground' : 'text-success'}`} />
+                  </div>
+                  <div>
+                    <div className="flex h-2 gap-1 overflow-hidden rounded-full" role="img" aria-label={`${counts.up} operational, ${counts.down} down, ${counts.pending} pending`}>
+                      {counts.total === 0 ? (
+                        <span className="h-full flex-1 rounded-full bg-white/[0.08]" />
+                      ) : (
+                        <>
+                          {counts.up > 0 && <span className="h-full rounded-full bg-success transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.up / barTotal }} />}
+                          {counts.down > 0 && <span className="h-full rounded-full bg-destructive transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.down / barTotal }} />}
+                          {counts.pending > 0 && <span className="h-full rounded-full bg-white/20 transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.pending / barTotal }} />}
+                        </>
+                      )}
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">Refreshes every minute.</p>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+
+            <Reveal delay={80} className="md:col-span-3">
+              <div className="bezel-sm h-full">
+                <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
+                  <div className="flex items-start justify-between">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Down now</p>
+                    <Pulse weight="light" className={`size-6 ${counts.down > 0 ? 'text-destructive' : 'text-muted-foreground/60'}`} />
+                  </div>
                   {loading ? (
-                    <Skeleton className="mt-3 h-10 w-44" />
+                    <Skeleton className="h-10 w-16" />
                   ) : (
-                    <p className="mt-2 font-display text-4xl font-medium tracking-tight tabular-nums">
-                      {counts.up}
-                      <span className="text-muted-foreground"> / {counts.total}</span>
-                      <span className="ml-2 text-base font-normal text-muted-foreground">operational</span>
+                    <p className={`font-display text-5xl font-medium tracking-tight tabular-nums ${counts.down > 0 ? 'text-destructive' : ''}`}>{counts.down}</p>
+                  )}
+                </div>
+              </div>
+            </Reveal>
+
+            <Reveal delay={160} className="md:col-span-3">
+              <div className="bezel-sm h-full">
+                <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
+                  <div className="flex items-start justify-between">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Avg response</p>
+                    <Timer weight="light" className="size-6 text-muted-foreground/60" />
+                  </div>
+                  {loading ? (
+                    <Skeleton className="h-10 w-24" />
+                  ) : (
+                    <p className="font-display text-5xl font-medium tracking-tight tabular-nums">
+                      {counts.avg ?? '—'}
+                      {counts.avg !== null && <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span>}
                     </p>
                   )}
                 </div>
-                <CheckCircle weight="light" className={`size-6 ${counts.down > 0 ? 'text-muted-foreground' : 'text-success'}`} />
               </div>
-              <div>
-                <div className="flex h-2 gap-1 overflow-hidden rounded-full" role="img" aria-label={`${counts.up} operational, ${counts.down} down, ${counts.pending} pending`}>
-                  {counts.total === 0 ? (
-                    <span className="h-full flex-1 rounded-full bg-white/[0.08]" />
-                  ) : (
-                    <>
-                      {counts.up > 0 && <span className="h-full rounded-full bg-success transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.up / barTotal }} />}
-                      {counts.down > 0 && <span className="h-full rounded-full bg-destructive transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.down / barTotal }} />}
-                      {counts.pending > 0 && <span className="h-full rounded-full bg-white/20 transition-[flex-grow] duration-700 ease-fluid" style={{ flexGrow: counts.pending / barTotal }} />}
-                    </>
-                  )}
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">Refreshes every minute.</p>
-              </div>
-            </div>
-          </div>
-        </Reveal>
+            </Reveal>
+          </section>
 
-        <Reveal delay={80} className="md:col-span-3">
-          <div className="bezel-sm h-full">
-            <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
-              <div className="flex items-start justify-between">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Down now</p>
-                <Pulse weight="light" className={`size-6 ${counts.down > 0 ? 'text-destructive' : 'text-muted-foreground/60'}`} />
-              </div>
-              {loading ? (
-                <Skeleton className="h-10 w-16" />
-              ) : (
-                <p className={`font-display text-5xl font-medium tracking-tight tabular-nums ${counts.down > 0 ? 'text-destructive' : ''}`}>{counts.down}</p>
-              )}
-            </div>
-          </div>
-        </Reveal>
-
-        <Reveal delay={160} className="md:col-span-3">
-          <div className="bezel-sm h-full">
-            <div className="bezel-sm-core flex h-full flex-col justify-between gap-6 p-6">
-              <div className="flex items-start justify-between">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Avg response</p>
-                <Timer weight="light" className="size-6 text-muted-foreground/60" />
-              </div>
-              {loading ? (
-                <Skeleton className="h-10 w-24" />
-              ) : (
-                <p className="font-display text-5xl font-medium tracking-tight tabular-nums">
-                  {counts.avg ?? '—'}
-                  {counts.avg !== null && <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span>}
-                </p>
-              )}
-            </div>
-          </div>
-        </Reveal>
-      </section>
-
-      {/* Needs attention */}
-      {!loading && downServers.length > 0 && (
-        <section aria-label="Needs attention">
-          <Alert tone="error" title={`${downServers.length} ${downServers.length === 1 ? 'server needs' : 'servers need'} attention`}>
-            <ul className="mt-2 space-y-1.5">
-              {downServers.map((s) => (
-                <li key={idOf(s)} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <Link href={`/servers?s=${idOf(s)}`} className="font-medium text-foreground underline-offset-4 hover:underline">
-                    {s.name}
-                  </Link>
-                  <span className="text-[13px]">
-                    {s.error ? `${s.error} · ` : ''}down for {durationSince(s.lastStatusChange || s.lastChecked)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Alert>
-        </section>
-      )}
-
-      {/* Monitors */}
-      <section aria-labelledby="monitors-heading" className="space-y-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <h2 id="monitors-heading" className="font-display text-2xl font-medium tracking-tight">
-            {admin ? 'All servers' : 'Your servers'}
-          </h2>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative sm:w-64">
-              <MagnifyingGlass weight="light" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
-              <Input type="search" aria-label="Search servers" placeholder="Search servers" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="rounded-full pl-10" />
-            </div>
-            <div role="group" aria-label="Filter by status" className="inline-flex rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08]">
-              {FILTERS.map((f) => {
-                const n = f.key === 'all' ? counts.total : f.key === 'up' ? counts.up : counts.down;
-                const on = statusFilter === f.key;
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setStatusFilter(f.key)}
-                    className={`rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-[background-color,color] duration-500 ease-fluid ${on ? 'bg-white/[0.1] text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    {f.label} <span className="ml-0.5 tabular-nums text-muted-foreground">{n}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        <div className="bezel-sm">
-          <div className="bezel-sm-core overflow-hidden">
-            {loading ? (
-              <div className="space-y-px p-3" role="status" aria-label="Loading servers">
-                {[0, 1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-16 rounded-2xl" />
-                ))}
-              </div>
-            ) : visible.length === 0 ? (
-              <EmptyState
-                icon={HardDrives}
-                title={counts.total === 0 ? 'No servers yet' : 'Nothing matches'}
-                description={
-                  counts.total === 0
-                    ? 'Add a website or server address and Ping Pilott will start checking it.'
-                    : 'Try a different search term or clear the status filter.'
-                }
-                action={
-                  counts.total === 0 ? (
-                    <Button asChild>
-                      <Link href="/servers/new">
-                        <Plus weight="light" />
-                        Add your first server
+          {/* Needs attention */}
+          {!loading && downServers.length > 0 && (
+            <section aria-label="Needs attention">
+              <Alert tone="error" title={`${downServers.length} ${downServers.length === 1 ? 'server needs' : 'servers need'} attention`}>
+                <ul className="mt-2 space-y-1.5">
+                  {downServers.map((s) => (
+                    <li key={idOf(s)} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <Link href={`/servers?s=${idOf(s)}`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                        {s.name}
                       </Link>
-                    </Button>
-                  ) : (
-                    <Button variant="outline" onClick={() => { setSearchTerm(''); setStatusFilter('all'); }}>
-                      Clear filters
-                    </Button>
-                  )
-                }
-              />
-            ) : (
-              <>
-                {/* Desktop table */}
-                <div className="hidden overflow-x-auto lg:block">
-                  <table className="w-full text-sm">
-                    <thead className="border-b border-white/[0.06]">
-                      <tr>
-                        {renderSortHeader('name', 'Server')}
-                        {renderSortHeader('status', 'Status')}
-                        {renderSortHeader('responseTime', 'Response')}
-                        {renderSortHeader('lastChecked', 'Last check')}
-                        {admin && renderSortHeader('owner', 'Owner')}
-                        <th scope="col" className="px-5 py-3 text-right text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                          <span className="sr-only">Actions</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/[0.05]">
-                      {visible.map((server) => (
-                        <tr key={idOf(server)} className="transition-colors duration-300 ease-fluid hover:bg-white/[0.025]">
-                          <td className="px-5 py-4">
-                            <Link href={`/servers?s=${idOf(server)}`} className="font-medium text-foreground underline-offset-4 hover:underline">
-                              {server.name}
-                            </Link>
-                            <a
-                              href={toHref(server.url)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-0.5 flex w-fit items-center gap-1 font-mono text-xs text-muted-foreground transition-colors duration-300 ease-fluid hover:text-primary"
-                            >
-                              {displayUrl(server.url)}
-                              <ArrowSquareOut weight="light" className="size-3.5" />
-                              <span className="sr-only">(opens in a new tab)</span>
-                            </a>
-                          </td>
-                          <td className="px-5 py-4">
-                            <StatusBadge status={server.status} />
-                          </td>
-                          <td className="px-5 py-4 font-mono text-[13px] tabular-nums">
-                            {server.responseTime ? `${server.responseTime} ms` : <span className="text-muted-foreground">—</span>}
-                          </td>
-                          <td className="px-5 py-4 text-[13px] text-muted-foreground">{timeAgo(server.lastChecked)}</td>
-                          {admin && <td className="px-5 py-4 text-[13px] text-muted-foreground">{ownerName(server)}</td>}
-                          <td className="px-3 py-3">
-                            {renderRowActions(server)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile cards */}
-                <ul className="divide-y divide-white/[0.05] lg:hidden">
-                  {visible.map((server) => (
-                    <li key={idOf(server)} className="space-y-3 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <Link href={`/servers?s=${idOf(server)}`} className="block truncate font-medium">
-                            {server.name}
-                          </Link>
-                          <p className="truncate font-mono text-xs text-muted-foreground">{displayUrl(server.url)}</p>
-                        </div>
-                        <StatusBadge status={server.status} />
-                      </div>
-                      <div className="flex items-center justify-between text-[13px] text-muted-foreground">
-                        {server.responseTime ? <span className="font-mono tabular-nums text-foreground">{server.responseTime} ms</span> : <span>No response</span>}
-                        <span>{server.lastChecked ? `Checked ${timeAgo(server.lastChecked)}` : 'Not checked yet'}</span>
-                      </div>
-                      {admin && <p className="text-[13px] text-muted-foreground">Owner: {ownerName(server)}</p>}
-                      {renderRowActions(server)}
+                      <span className="text-[13px]">
+                        {s.error ? `${s.error} · ` : ''}down for {durationSince(s.lastStatusChange || s.lastChecked)}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              </>
-            )}
-          </div>
-        </div>
-      </section>
+              </Alert>
+            </section>
+          )}
 
-      <Dialog
-        open={!!deleteTarget}
-        onClose={() => !deleting && setDeleteTarget(null)}
-        title={`Delete ${deleteTarget?.name ?? 'server'}?`}
-        description={'Monitoring stops immediately and its check history is removed. This can’t be undone.'}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-              Keep server
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
-              {deleting ? 'Deleting' : 'Delete server'}
-            </Button>
-          </>
-        }
-      />
+          {/* Servers: a glance, not a second management screen. Details, history and settings live on Servers. */}
+          <section aria-labelledby="servers-heading" className="space-y-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 id="servers-heading" className="font-display text-2xl font-medium tracking-tight">
+                  {admin ? 'All servers' : 'Your servers'}
+                </h2>
+                {showUsage && !loading && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {counts.total} of {maxServers} on your {planName} plan.{' '}
+                    <Link href="/subscription" className="text-primary underline-offset-4 hover:underline">Plan & billing</Link>
+                  </p>
+                )}
+              </div>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/servers">
+                  Open servers
+                  <CaretRight weight="light" />
+                </Link>
+              </Button>
+            </div>
+
+            <div className="bezel-sm">
+              <div className="bezel-sm-core overflow-hidden">
+                {loading ? (
+                  <div className="space-y-px p-3" role="status" aria-label="Loading servers">
+                    {[0, 1, 2].map((i) => (
+                      <Skeleton key={i} className="h-16 rounded-2xl" />
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-white/[0.05]">
+                    {sorted.map((server) => {
+                      const id = idOf(server);
+                      return (
+                        <li key={id} className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4 transition-colors duration-300 ease-fluid hover:bg-white/[0.025]">
+                          <StatusDot status={server.status} />
+                          <div className="min-w-0 flex-1 basis-48">
+                            <Link href={`/servers?s=${id}`} className="block truncate font-medium underline-offset-4 hover:underline">
+                              {server.name}
+                            </Link>
+                            <p className="truncate font-mono text-xs text-muted-foreground">
+                              {displayUrl(server.url)}
+                              {admin && <span className="font-sans"> · {ownerName(server)}</span>}
+                            </p>
+                          </div>
+                          <StatusBadge status={server.status} className="hidden sm:inline-flex" />
+                          <span className="sr-only sm:hidden">{server.status === 'up' ? 'Operational' : server.status === 'down' ? 'Down' : 'Pending'}</span>
+                          <span className="w-20 text-right font-mono text-[13px] tabular-nums">
+                            {server.responseTime ? `${server.responseTime} ms` : <span className="text-muted-foreground">—</span>}
+                          </span>
+                          <span className="hidden w-24 text-right text-[13px] text-muted-foreground md:block">
+                            {server.lastChecked ? timeAgo(server.lastChecked) : 'Not checked'}
+                          </span>
+                          <Button variant="ghost" size="sm" onClick={() => handleCheckServer(id)} disabled={checking[id]} aria-label={`Check ${server.name} now`}>
+                            <ArrowsClockwise weight="light" className={checking[id] ? 'animate-spin' : ''} />
+                            {checking[id] ? 'Checking' : 'Check now'}
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
     </PageContainer>
   );
 }
