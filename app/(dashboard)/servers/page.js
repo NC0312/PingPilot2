@@ -12,6 +12,8 @@ import {
     Check,
     Minus,
     WarningCircle,
+    CheckCircle,
+    MagnifyingGlass,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
@@ -23,6 +25,7 @@ import { PageContainer } from '@/app/components/Layout/AppShell';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button, ButtonArrow } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -34,11 +37,7 @@ import { cn } from '@/lib/utils';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const TABS = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'monitoring', label: 'Response time' },
-    { id: 'settings', label: 'Details' },
-];
+const TYPE_LABEL = { website: 'Website', api: 'API', tcp: 'TCP', database: 'Database' };
 
 const PRIORITY_BADGE = { high: 'destructive', medium: 'warning', low: 'default' };
 
@@ -101,7 +100,7 @@ function ResponseChart({ data, height, summary }) {
 
     if (data.length === 0) {
         return (
-            <div className="flex items-center justify-center text-sm text-muted-foreground" style={{ height }}>
+            <div className="flex items-center justify-center rounded-2xl bg-white/[0.02] text-sm text-muted-foreground ring-1 ring-white/[0.05]" style={{ height: Math.min(height, 120) }}>
                 No check history for this period yet.
             </div>
         );
@@ -181,6 +180,76 @@ function Legend() {
     );
 }
 
+const formatSpan = (ms) => {
+    const minutes = Math.max(1, Math.round(ms / 60000));
+    if (minutes < 60) return `${minutes} min`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? `${h} h ${m} min` : `${h} h`;
+};
+
+// Runs of failed checks become incidents. A run ends at the next successful check; one still open is ongoing.
+const getIncidents = (data, frequency, downNow) => {
+    const minimum = Math.max(frequency || 5, 5) * 60000;
+    const out = [];
+    let open = null;
+    data.forEach((p) => {
+        if (p.status === 'down') {
+            if (!open) open = { start: p.time, error: p.error };
+            else if (!open.error) open.error = p.error;
+        } else if (p.status === 'up' && open) {
+            out.push({ start: open.start, error: open.error, ongoing: false, ms: Math.max(p.time - open.start, minimum) });
+            open = null;
+        }
+    });
+    if (open) out.push({ start: open.start, error: open.error, ongoing: downNow, ms: Math.max(Date.now() - open.start, minimum) });
+    return out.reverse();
+};
+
+const STRIP_SLOTS = 48;
+
+// 24 hours as 48 half-hour slots: red if any check failed, green if checks passed, grey if nothing ran.
+function HistoryStrip({ data }) {
+    const span = 24 * 3600000;
+    const end = Date.now();
+    const start = end - span;
+    const slotMs = span / STRIP_SLOTS;
+    const slots = Array.from({ length: STRIP_SLOTS }, (_, i) => ({ from: start + i * slotMs, up: 0, down: 0 }));
+    data.forEach((p) => {
+        const i = Math.floor((p.time.getTime() - start) / slotMs);
+        if (i < 0 || i >= STRIP_SLOTS) return;
+        if (p.status === 'down') slots[i].down += 1;
+        else if (p.status === 'up') slots[i].up += 1;
+    });
+    const failed = slots.filter((x) => x.down > 0).length;
+    const passed = slots.filter((x) => !x.down && x.up > 0).length;
+
+    return (
+        <div>
+            <div
+                role="img"
+                aria-label={`Last 24 hours in half-hour steps: ${passed} operational, ${failed} with failed checks, ${STRIP_SLOTS - passed - failed} without checks.`}
+                className="flex h-10 items-stretch gap-[3px]"
+            >
+                {slots.map((x, i) => (
+                    <span
+                        key={i}
+                        title={`${formatTimestamp(new Date(x.from), null, 'HH:mm')}: ${x.down ? 'failed checks' : x.up ? 'operational' : 'no checks'}`}
+                        className={cn(
+                            'flex-1 rounded-[3px] transition-colors duration-500 ease-fluid',
+                            x.down ? 'bg-destructive' : x.up ? 'bg-success/70' : 'bg-white/[0.07]'
+                        )}
+                    />
+                ))}
+            </div>
+            <div className="mt-2 flex justify-between font-mono text-[11px] text-muted-foreground">
+                <span>24 hours ago</span>
+                <span>Now</span>
+            </div>
+        </div>
+    );
+}
+
 export default function EnhancedServersPage() {
     const [servers, setServers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -188,7 +257,8 @@ export default function EnhancedServersPage() {
     const [selectedServer, setSelectedServer] = useState(null);
     const [responseTimeData, setResponseTimeData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState('overview');
+    const [query, setQuery] = useState('');
+    const [checkMessage, setCheckMessage] = useState('');
     const { user, apiRequest } = useAuth();
     // Each history request gets a number; only the newest one may update the chart.
     const historyRequestId = useRef(0);
@@ -215,8 +285,11 @@ export default function EnhancedServersPage() {
 
                 // If we have servers, select the first one by default
                 if (serversList.length > 0 && !selectedServer) {
-                    setSelectedServer(serversList[0]);
-                    fetchServerHistory(idOf(serversList[0]), serversList[0]);
+                    // /servers?s=<id> opens that server, so a refresh or a shared link lands where you were
+                    const wanted = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('s') : null;
+                    const initial = serversList.find((x) => idOf(x) === wanted) || serversList[0];
+                    setSelectedServer(initial);
+                    fetchServerHistory(idOf(initial), initial);
                 } else if (selectedServer) {
                     // Update selected server if it's in the list
                     const serverId = idOf(selectedServer);
@@ -338,6 +411,7 @@ export default function EnhancedServersPage() {
                         time: date,
                         avgTime: check.responseTime || 0,
                         status: check.status || 'unknown',
+                        error: check.error || null,
                         // Save original date components for filtering
                         ...zoned(date, forServer?.timezone) // day 0-6 (Sun-Sat), hour, minute on the server's clock
                     };
@@ -401,6 +475,11 @@ export default function EnhancedServersPage() {
             if (response.status === 'success') {
                 const checkData = response.data.check;
                 setError(null);
+                setCheckMessage(
+                    checkData.status === 'up'
+                        ? `${selectedServer.name} is up. Response time ${checkData.responseTime} milliseconds.`
+                        : `${selectedServer.name} is down.`
+                );
 
                 setSelectedServer(prev => ({
                     ...prev,
@@ -447,6 +526,7 @@ export default function EnhancedServersPage() {
     const handleServerSelect = (server) => {
         setSelectedServer(server);
         fetchServerHistory(idOf(server), server);
+        window.history.replaceState(null, '', `?s=${idOf(server)}`);
     };
 
     // Uptime over the last N hours, or null when there is no data in that window
@@ -598,6 +678,12 @@ export default function EnhancedServersPage() {
     const monitoring = s?.monitoring;
     const alerts = monitoring?.alerts;
     const stateSince = s?.lastStatusChange || s?.lastChecked;
+    const hasChecks = responseTimeData.length > 0;
+    const uptime24 = calculateUptime(24);
+    const incidents = s ? getIncidents(responseTimeData, monitoring?.frequency, sStatus === 'down') : [];
+    const frequency = monitoring?.frequency || 5;
+    const q = query.trim().toLowerCase();
+    const listed = q ? servers.filter((x) => `${x.name} ${x.url}`.toLowerCase().includes(q)) : servers;
 
     return (
         <PageContainer className="space-y-10">
@@ -620,11 +706,19 @@ export default function EnhancedServersPage() {
                 </Alert>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
+            <p className="sr-only" role="status" aria-live="polite">{checkMessage}</p>
+
+            <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
                 {/* Server picker: horizontal strip on mobile, list on desktop */}
-                <nav aria-label="Servers" className="-mx-4 min-w-0 px-4 sm:-mx-8 sm:px-8 lg:sticky lg:top-6 lg:mx-0 lg:px-0">
+                <nav aria-label="Servers" className="-mx-4 min-w-0 space-y-3 px-4 sm:-mx-8 sm:px-8 lg:sticky lg:top-6 lg:mx-0 lg:px-0">
+                    {servers.length > 6 && (
+                        <div className="relative">
+                            <MagnifyingGlass weight="light" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
+                            <Input type="search" aria-label="Find a server" placeholder="Find a server" value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-full pl-10" />
+                        </div>
+                    )}
                     <ul className="flex snap-x gap-2.5 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible lg:pb-0">
-                        {servers.map((server) => {
+                        {listed.map((server) => {
                             const active = s && idOf(server) === idOf(s);
                             return (
                                 <li key={idOf(server)} className="w-[230px] shrink-0 snap-start lg:w-auto">
@@ -652,18 +746,19 @@ export default function EnhancedServersPage() {
                                 </li>
                             );
                         })}
+                        {listed.length === 0 && <li className="px-1 text-sm text-muted-foreground">No server matches “{query}”.</li>}
                     </ul>
                 </nav>
 
                 {s && (
                     <div className="min-w-0 space-y-6">
-                        {/* Status hero */}
+                        {/* Status, with the last 24 hours at a glance */}
                         <Reveal>
                             <Panel
                                 className={cn(
                                     sStatus === 'down' && 'shadow-[0_0_0_1px_oklch(0.72_0.17_22/0.35),0_30px_60px_-40px_oklch(0.72_0.17_22/0.5)]'
                                 )}
-                                coreClassName="space-y-6"
+                                coreClassName="space-y-7"
                             >
                                 <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
                                     <div className="min-w-0 space-y-3">
@@ -692,7 +787,7 @@ export default function EnhancedServersPage() {
                                         <p className="text-sm text-muted-foreground">
                                             {sStatus === 'up' && `Online since ${formatTimestamp(stateSince, null, 'D MMM, HH:mm')}.`}
                                             {sStatus === 'down' && `Down since ${formatTimestamp(stateSince, null, 'D MMM, HH:mm')}.`}
-                                            {sStatus === 'unknown' && 'No result yet. Run a check to see the current status.'}
+                                            {sStatus === 'unknown' && `The first check runs within ${plural(frequency, 'minute')}. Or run one now.`}
                                         </p>
                                     </div>
 
@@ -713,6 +808,16 @@ export default function EnhancedServersPage() {
                                     </Alert>
                                 )}
 
+                                <section aria-labelledby="strip-heading">
+                                    <div className="mb-3 flex items-baseline justify-between gap-3">
+                                        <h3 id="strip-heading" className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Last 24 hours</h3>
+                                        <p className={cn('font-mono text-sm tabular-nums', uptime24 === null ? 'text-muted-foreground' : parseFloat(uptime24) >= 99.9 ? 'text-success' : parseFloat(uptime24) >= 95 ? 'text-warning' : 'text-destructive')}>
+                                            {uptime24 === null ? 'No checks yet' : `${uptime24}% uptime`}
+                                        </p>
+                                    </div>
+                                    <HistoryStrip data={responseTimeData} />
+                                </section>
+
                                 <div className="flex flex-wrap items-center gap-2.5 border-t border-white/[0.07] pt-5">
                                     <Button onClick={handleRefresh} disabled={refreshing}>
                                         <ArrowsClockwise weight="light" className={refreshing ? 'animate-spin' : ''} />
@@ -721,7 +826,7 @@ export default function EnhancedServersPage() {
                                     <Button asChild variant="outline">
                                         <Link href={`/servers/${idOf(s)}/settings`}>
                                             <Gear weight="light" />
-                                            Manage server
+                                            Edit settings
                                         </Link>
                                     </Button>
                                 </div>
@@ -734,7 +839,7 @@ export default function EnhancedServersPage() {
                                 <div className="bezel-sm-core grid divide-y divide-white/[0.06] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
                                     {[8, 16, 24].map((hours) => {
                                         const uptime = calculateUptime(hours);
-                                        const incidents = countIncidents(hours);
+                                        const windowIncidents = countIncidents(hours);
                                         const downtime = calculateDowntime(hours);
                                         return (
                                             <div key={hours} className="p-6">
@@ -748,7 +853,7 @@ export default function EnhancedServersPage() {
                                                     {uptime === null ? '—' : `${uptime}%`}
                                                 </p>
                                                 <p className="mt-2 text-[13px] text-muted-foreground">
-                                                    {plural(incidents, 'incident')}, {downtime} min downtime
+                                                    {uptime === null ? 'No checks in this window yet' : `${plural(windowIncidents, 'incident')}, ${downtime} min downtime`}
                                                 </p>
                                             </div>
                                         );
@@ -757,196 +862,140 @@ export default function EnhancedServersPage() {
                             </div>
                         </Reveal>
 
-                        {/* Tabs */}
-                        <div role="tablist" aria-label="Server views" className="flex max-w-full gap-1 overflow-x-auto rounded-full bg-white/[0.04] p-1 ring-1 ring-white/[0.08] sm:inline-flex">
-                            {TABS.map((tab, i) => {
-                                const on = activeTab === tab.id;
-                                return (
-                                    <button
-                                        key={tab.id}
-                                        id={`srv-tab-${tab.id}`}
-                                        role="tab"
-                                        type="button"
-                                        aria-selected={on}
-                                        aria-controls={`srv-panel-${tab.id}`}
-                                        tabIndex={on ? 0 : -1}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        onKeyDown={(e) => {
-                                            let next = null;
-                                            if (e.key === 'ArrowRight') next = (i + 1) % TABS.length;
-                                            if (e.key === 'ArrowLeft') next = (i - 1 + TABS.length) % TABS.length;
-                                            if (next === null) return;
-                                            e.preventDefault();
-                                            setActiveTab(TABS[next].id);
-                                            document.getElementById(`srv-tab-${TABS[next].id}`)?.focus();
-                                        }}
-                                        className={cn(
-                                            'min-h-10 shrink-0 whitespace-nowrap rounded-full px-4 text-sm font-medium transition-[background-color,color] duration-500 ease-fluid',
-                                            on ? 'bg-white/[0.1] text-foreground' : 'text-muted-foreground hover:text-foreground'
-                                        )}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        <div role="tabpanel" id={`srv-panel-${activeTab}`} aria-labelledby={`srv-tab-${activeTab}`} tabIndex={0} className="space-y-6 outline-none">
-                            {activeTab === 'overview' && (
-                                <Reveal key="overview" className="space-y-6">
-                                    <Panel>
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                            <h3 className="font-display text-lg font-medium tracking-tight">Response time</h3>
-                                            <Legend />
-                                        </div>
-                                        {monitoring && (
-                                            <p className="mt-2 text-xs text-muted-foreground">
-                                                Schedule:{' '}
-                                                {monitoring.daysOfWeek && monitoring.daysOfWeek.length > 0 && monitoring.daysOfWeek.length < 7
-                                                    ? monitoring.daysOfWeek.map((day) => DAY_NAMES[day]).join(', ')
-                                                    : 'every day'}
-                                                {monitoring.timeWindows && monitoring.timeWindows.length > 0
-                                                    ? `, ${monitoring.timeWindows[0].start} to ${monitoring.timeWindows[0].end}`
-                                                    : ', all day'}
-                                            </p>
-                                        )}
-                                        <div className="mt-6">
-                                            <ResponseChart data={responseTimeData} height={288} summary={chartSummary} />
-                                        </div>
-                                        {responseTimeData.length > 0 && (
-                                            <p className="mt-4 text-xs text-muted-foreground">
-                                                The chart only shows checks inside the monitoring schedule.
-                                            </p>
-                                        )}
-                                    </Panel>
-
-                                    <div className="bezel-sm">
-                                        <div className="bezel-sm-core grid divide-y divide-white/[0.06] md:grid-cols-2 md:divide-x md:divide-y-0">
-                                            <div className="p-6 sm:p-7">
-                                                <h3 className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Server</h3>
-                                                <dl className="space-y-4">
-                                                    <Fact label="URL"><span className="break-all font-mono text-[13px]">{s.url}</span></Fact>
-                                                    <Fact label="Type"><span className="capitalize">{s.type || 'website'}</span></Fact>
-                                                    <Fact label="Added">{formatTimestamp(s.uploadedAt || s.createdAt, null, 'D MMM YYYY, HH:mm')}</Fact>
-                                                    {s.description && <Fact label="Description">{s.description}</Fact>}
-                                                </dl>
+                        {/* Response time */}
+                        <Reveal delay={120}>
+                            <Panel>
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <h3 className="font-display text-xl font-medium tracking-tight">Response time</h3>
+                                    <Legend />
+                                </div>
+                                <div className="mt-6">
+                                    <ResponseChart data={responseTimeData} height={300} summary={chartSummary} />
+                                </div>
+                                {responseStats && (
+                                    <dl className="mt-6 grid grid-cols-3 gap-4 border-t border-white/[0.07] pt-6">
+                                        {[
+                                            ['Average', responseStats.avg],
+                                            ['Fastest', responseStats.min],
+                                            ['Slowest', responseStats.max],
+                                        ].map(([label, value]) => (
+                                            <div key={label}>
+                                                <dt className="text-xs text-muted-foreground">{label}</dt>
+                                                <dd className="mt-1 font-display text-2xl font-medium tracking-tight tabular-nums sm:text-3xl">
+                                                    {value}
+                                                    <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
+                                                </dd>
                                             </div>
-                                            <div className="p-6 sm:p-7">
-                                                <h3 className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Latest check</h3>
-                                                <dl className="space-y-4">
-                                                    <Fact label="Status">
-                                                        <StatusBadge status={sStatus} label={sStatus === 'up' ? 'Online' : sStatus === 'down' ? 'Down' : 'Pending'} />
-                                                    </Fact>
-                                                    <Fact label="Checked">{s.lastChecked ? formatTimestamp(s.lastChecked, null, 'D MMM, HH:mm:ss') : 'Never'}</Fact>
-                                                    <Fact label="Response time">
-                                                        <span className="font-mono tabular-nums">{s.responseTime ? `${s.responseTime} ms` : 'N/A'}</span>
-                                                    </Fact>
-                                                    {s.error && <Fact label="Error"><span className="font-mono text-[13px] text-destructive">{s.error}</span></Fact>}
-                                                </dl>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Reveal>
-                            )}
+                                        ))}
+                                    </dl>
+                                )}
+                                {hasChecks && <p className="mt-4 text-xs text-muted-foreground">The chart only shows checks inside the monitoring schedule.</p>}
+                            </Panel>
+                        </Reveal>
 
-                            {activeTab === 'monitoring' && (
-                                <Reveal key="monitoring">
-                                    <Panel>
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                            <h3 className="font-display text-lg font-medium tracking-tight">Response time, last 24 hours</h3>
-                                            <Legend />
-                                        </div>
-                                        <div className="mt-6">
-                                            <ResponseChart data={responseTimeData} height={384} summary={chartSummary} />
-                                        </div>
-
-                                        <dl className="mt-8 grid gap-6 border-t border-white/[0.07] pt-6 sm:grid-cols-3">
-                                            {[
-                                                ['Average', responseStats?.avg],
-                                                ['Slowest', responseStats?.max],
-                                                ['Fastest', responseStats?.min],
-                                            ].map(([label, value]) => (
-                                                <div key={label}>
-                                                    <dt className="text-xs text-muted-foreground">{label}</dt>
-                                                    <dd className="mt-1 font-display text-3xl font-medium tracking-tight tabular-nums">
-                                                        {value === undefined ? '—' : value}
-                                                        {value !== undefined && <span className="ml-1 text-base font-normal text-muted-foreground">ms</span>}
-                                                    </dd>
+                        {/* Incidents */}
+                        <Reveal delay={160}>
+                            <Panel>
+                                <h3 className="font-display text-xl font-medium tracking-tight">Incidents, last 24 hours</h3>
+                                {incidents.length === 0 ? (
+                                    <p className="mt-4 flex items-center gap-2.5 text-sm text-muted-foreground">
+                                        <CheckCircle weight="light" className={cn('size-5', hasChecks ? 'text-success' : 'text-muted-foreground/60')} />
+                                        {hasChecks ? 'No failed checks in the last 24 hours.' : 'Nothing to report until the first checks have run.'}
+                                    </p>
+                                ) : (
+                                    <ul className="mt-5 divide-y divide-white/[0.06]">
+                                        {incidents.slice(0, 6).map((inc) => (
+                                            <li key={inc.start.getTime()} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
+                                                <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', inc.ongoing ? 'bg-destructive' : 'bg-muted-foreground/60')} aria-hidden="true" />
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                                                        {inc.ongoing ? 'Down for' : 'Was down for'} {formatSpan(inc.ms)}
+                                                        {inc.ongoing && <Badge variant="destructive">Ongoing</Badge>}
+                                                    </p>
+                                                    {inc.error && <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{inc.error}</p>}
                                                 </div>
-                                            ))}
-                                        </dl>
-                                    </Panel>
-                                </Reveal>
-                            )}
+                                                <p className="shrink-0 text-right text-[13px] text-muted-foreground">{formatTimestamp(inc.start, null, 'D MMM, HH:mm')}</p>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </Panel>
+                        </Reveal>
 
-                            {activeTab === 'settings' && (
-                                <Reveal key="settings">
-                                    <div className="bezel-sm">
-                                        <div className="bezel-sm-core divide-y divide-white/[0.06]">
-                                            <section className="p-6 sm:p-7">
-                                                <h3 className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Schedule</h3>
-                                                <dl className="grid gap-5 sm:grid-cols-3">
-                                                    <Fact label="Check frequency">Every {plural(monitoring?.frequency || 5, 'minute')}</Fact>
-                                                    <Fact label="Days">
-                                                        {monitoring?.daysOfWeek?.length
-                                                            ? monitoring.daysOfWeek.map((day) => DAY_NAMES[day]).join(', ')
-                                                            : 'Every day'}
-                                                    </Fact>
-                                                    <Fact label="Hours">
-                                                        <span className="font-mono tabular-nums">
-                                                            {monitoring?.timeWindows?.map((w) => `${w.start}–${w.end}`).join(', ') || 'All day'}
-                                                        </span>
-                                                    </Fact>
-                                                </dl>
-                                            </section>
+                        {/* How it's monitored */}
+                        <Reveal delay={200}>
+                            <Panel>
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <h3 className="font-display text-xl font-medium tracking-tight">How it’s monitored</h3>
+                                    <Button asChild variant="ghost" size="sm">
+                                        <Link href={`/servers/${idOf(s)}/settings`}>Change</Link>
+                                    </Button>
+                                </div>
+                                <div className="mt-6 grid gap-8 md:grid-cols-3">
+                                    <dl className="space-y-4">
+                                        <Fact label="Checked">Every {plural(frequency, 'minute')}</Fact>
+                                        <Fact label="Days">
+                                            {monitoring?.daysOfWeek?.length && monitoring.daysOfWeek.length < 7
+                                                ? monitoring.daysOfWeek.map((day) => DAY_NAMES[day]).join(', ')
+                                                : 'Every day'}
+                                        </Fact>
+                                        <Fact label="Hours">
+                                            <span className="font-mono tabular-nums">
+                                                {monitoring?.timeWindows?.map((w) => `${w.start}–${w.end}`).join(', ') || 'All day'}
+                                            </span>
+                                            {s.timezone && <span className="mt-0.5 block text-xs text-muted-foreground">{s.timezone}</span>}
+                                        </Fact>
+                                    </dl>
 
-                                            <section className="p-6 sm:p-7">
-                                                <h3 className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Alerts</h3>
-                                                <dl className="grid gap-5 sm:grid-cols-2">
-                                                    <Fact label="Channels">
-                                                        <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
-                                                            {[
-                                                                ['Email alerts', alerts?.email],
-                                                                ['Call alerts', alerts?.phone],
-                                                            ].map(([label, on]) => (
-                                                                <li key={label} className="flex items-center gap-2">
-                                                                    {on ? <Check weight="bold" className="size-4 text-success" /> : <Minus weight="bold" className="size-4 text-muted-foreground/60" />}
-                                                                    <span className={on ? '' : 'text-muted-foreground'}>{label}</span>
-                                                                    <span className="sr-only">{on ? 'on' : 'off'}</span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    </Fact>
-                                                    <Fact label="Response threshold">
-                                                        Alert above <span className="font-mono tabular-nums">{alerts?.responseThreshold || 1000} ms</span>
-                                                    </Fact>
-                                                </dl>
-                                            </section>
+                                    <dl className="space-y-4">
+                                        <Fact label="Alert channels">
+                                            <ul className="space-y-1.5">
+                                                {[
+                                                    ['Email', alerts?.email],
+                                                    ['Phone call', alerts?.phone],
+                                                    ['Webhook', !!alerts?.webhookUrl],
+                                                ].map(([label, on]) => (
+                                                    <li key={label} className="flex items-center gap-2">
+                                                        {on ? <Check weight="bold" className="size-4 text-success" /> : <Minus weight="bold" className="size-4 text-muted-foreground/60" />}
+                                                        <span className={on ? '' : 'text-muted-foreground'}>{label}</span>
+                                                        <span className="sr-only">{on ? 'on' : 'off'}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </Fact>
+                                        <Fact label="Slow means">
+                                            Over <span className="font-mono tabular-nums">{(alerts?.responseThreshold || 1000).toLocaleString()} ms</span>
+                                        </Fact>
+                                    </dl>
 
-                                            {(s.contactEmails?.length > 0 || s.contactPhones?.length > 0) && (
-                                                <section className="p-6 sm:p-7">
-                                                    <h3 className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Alert contacts</h3>
-                                                    <ul className="flex flex-wrap gap-2">
-                                                        {s.contactEmails?.map((email) => (
-                                                            <li key={email} className="flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1.5 text-sm ring-1 ring-white/10">
-                                                                <EnvelopeSimple weight="light" className="size-4 text-muted-foreground" />
-                                                                <span className="break-all">{email}</span>
-                                                            </li>
-                                                        ))}
-                                                        {s.contactPhones?.map((phone) => (
-                                                            <li key={phone} className="flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1.5 text-sm ring-1 ring-white/10">
-                                                                <Phone weight="light" className="size-4 text-muted-foreground" />
-                                                                <span className="font-mono text-[13px] tabular-nums">{formatPhone(phone)}</span>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                </section>
+                                    <dl className="space-y-4">
+                                        <Fact label="Tell">
+                                            {s.contactEmails?.length > 0 || s.contactPhones?.length > 0 ? (
+                                                <ul className="flex flex-col gap-1.5">
+                                                    {s.contactEmails?.map((email) => (
+                                                        <li key={email} className="flex items-center gap-2">
+                                                            <EnvelopeSimple weight="light" className="size-4 shrink-0 text-muted-foreground" />
+                                                            <span className="break-all">{email}</span>
+                                                        </li>
+                                                    ))}
+                                                    {s.contactPhones?.map((phone) => (
+                                                        <li key={phone} className="flex items-center gap-2">
+                                                            <Phone weight="light" className="size-4 shrink-0 text-muted-foreground" />
+                                                            <span className="font-mono text-[13px] tabular-nums">{formatPhone(phone)}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <span className="text-muted-foreground">Nobody yet</span>
                                             )}
-                                        </div>
-                                    </div>
-                                </Reveal>
-                            )}
-                        </div>
+                                        </Fact>
+                                        <Fact label="Type">{TYPE_LABEL[s.type] || 'Website'}</Fact>
+                                        <Fact label="Added">{formatTimestamp(s.uploadedAt || s.createdAt, null, 'D MMM YYYY')}</Fact>
+                                    </dl>
+                                </div>
+                                {s.description && <p className="mt-6 border-t border-white/[0.07] pt-5 text-sm text-muted-foreground">{s.description}</p>}
+                            </Panel>
+                        </Reveal>
                     </div>
                 )}
             </div>

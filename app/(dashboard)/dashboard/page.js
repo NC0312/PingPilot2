@@ -351,7 +351,7 @@ export default function DashboardPage() {
             <ul className="mt-2 space-y-1.5">
               {downServers.map((s) => (
                 <li key={idOf(s)} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <Link href={`/servers/${idOf(s)}/settings`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                  <Link href={`/servers?s=${idOf(s)}`} className="font-medium text-foreground underline-offset-4 hover:underline">
                     {s.name}
                   </Link>
                   <span className="text-[13px]">
@@ -448,7 +448,7 @@ export default function DashboardPage() {
                       {visible.map((server) => (
                         <tr key={idOf(server)} className="transition-colors duration-300 ease-fluid hover:bg-white/[0.025]">
                           <td className="px-5 py-4">
-                            <Link href={`/servers/${idOf(server)}/settings`} className="font-medium text-foreground underline-offset-4 hover:underline">
+                            <Link href={`/servers?s=${idOf(server)}`} className="font-medium text-foreground underline-offset-4 hover:underline">
                               {server.name}
                             </Link>
                             <a
@@ -485,7 +485,7 @@ export default function DashboardPage() {
                     <li key={idOf(server)} className="space-y-3 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <Link href={`/servers/${idOf(server)}/settings`} className="block truncate font-medium">
+                          <Link href={`/servers?s=${idOf(server)}`} className="block truncate font-medium">
                             {server.name}
                           </Link>
                           <p className="truncate font-mono text-xs text-muted-foreground">{displayUrl(server.url)}</p>
