@@ -26,6 +26,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/ui/status';
 import { Reveal } from '@/components/ui/reveal';
+import TrialNotice from '@/app/components/TrialNotice';
 import { timeAgo, durationSince, displayUrl, toHref } from '@/lib/time';
 
 const FILTERS = [
@@ -63,7 +64,7 @@ export default function DashboardPage() {
 
       if (admin && list.length > 0) {
         try {
-          const usersResponse = await apiRequest('/api/users', { method: 'GET' });
+          const usersResponse = await apiRequest('/api/users?limit=200', { method: 'GET' });
           const map = {};
           (usersResponse.data?.users || []).forEach((u) => {
             const uid = u.id || u._id;
@@ -187,10 +188,12 @@ export default function DashboardPage() {
   const downServers = servers.filter((s) => s.status === 'down');
   const barTotal = counts.total || 1;
 
-  const SortHeader = ({ k, children, className = '' }) => {
+  // Plain render functions, not components: a component defined here would be a new type on every render,
+  // remounting the buttons and dropping keyboard focus after each click.
+  const renderSortHeader = (k, children, className = '') => {
     const active = sortConfig.key === k;
     return (
-      <th scope="col" aria-sort={active ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={`px-5 py-3 text-left font-medium ${className}`}>
+      <th key={k} scope="col" aria-sort={active ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={`px-5 py-3 text-left font-medium ${className}`}>
         <button
           type="button"
           onClick={() => handleSort(k)}
@@ -207,7 +210,7 @@ export default function DashboardPage() {
     );
   };
 
-  const RowActions = ({ server }) => {
+  const renderRowActions = (server) => {
     const id = idOf(server);
     return (
       <div className="flex items-center justify-end gap-1">
@@ -264,6 +267,8 @@ export default function DashboardPage() {
           {error}
         </Alert>
       )}
+
+      {!loading && <TrialNotice servers={servers} />}
 
       {/* Summary bento */}
       <section aria-label="Summary" className="grid grid-cols-1 gap-4 md:grid-cols-12">
@@ -429,11 +434,11 @@ export default function DashboardPage() {
                   <table className="w-full text-sm">
                     <thead className="border-b border-white/[0.06]">
                       <tr>
-                        <SortHeader k="name">Server</SortHeader>
-                        <SortHeader k="status">Status</SortHeader>
-                        <SortHeader k="responseTime">Response</SortHeader>
-                        <SortHeader k="lastChecked">Last check</SortHeader>
-                        {admin && <SortHeader k="owner">Owner</SortHeader>}
+                        {renderSortHeader('name', 'Server')}
+                        {renderSortHeader('status', 'Status')}
+                        {renderSortHeader('responseTime', 'Response')}
+                        {renderSortHeader('lastChecked', 'Last check')}
+                        {admin && renderSortHeader('owner', 'Owner')}
                         <th scope="col" className="px-5 py-3 text-right text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                           <span className="sr-only">Actions</span>
                         </th>
@@ -466,7 +471,7 @@ export default function DashboardPage() {
                           <td className="px-5 py-4 text-[13px] text-muted-foreground">{timeAgo(server.lastChecked)}</td>
                           {admin && <td className="px-5 py-4 text-[13px] text-muted-foreground">{ownerName(server)}</td>}
                           <td className="px-3 py-3">
-                            <RowActions server={server} />
+                            {renderRowActions(server)}
                           </td>
                         </tr>
                       ))}
@@ -492,7 +497,7 @@ export default function DashboardPage() {
                         <span>{server.lastChecked ? `Checked ${timeAgo(server.lastChecked)}` : 'Not checked yet'}</span>
                       </div>
                       {admin && <p className="text-[13px] text-muted-foreground">Owner: {ownerName(server)}</p>}
-                      <RowActions server={server} />
+                      {renderRowActions(server)}
                     </li>
                   ))}
                 </ul>

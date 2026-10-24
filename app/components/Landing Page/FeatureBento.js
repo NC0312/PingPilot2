@@ -63,7 +63,7 @@ export default function FeatureBento() {
                             Told the moment it fails.
                         </h3>
                         <p className="text-[15px] leading-relaxed text-muted-foreground">
-                            Email on every plan, SMS on Pro, webhooks on Business. You hear about it before your customers write in.
+                            Email alerts on every plan, webhooks on Business. You hear about it before your customers write in.
                         </p>
                     </div>
                     <div className="mt-auto rounded-2xl bg-black/20 p-4 ring-1 ring-white/[0.05]">

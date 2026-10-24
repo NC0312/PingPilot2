@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export default function ProtectedRoute({ children }) {
-    const { user, loading } = useAuth();
+    const { user, loading, hasSignedOut } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const [isClient, setIsClient] = useState(false);
@@ -20,14 +20,17 @@ export default function ProtectedRoute({ children }) {
         // Only run after component mounts and auth state is determined
         if (isClient && !loading) {
             // If user is not authenticated and not on an auth page, redirect to login
-            if (!user && !pathname.startsWith('/auth')) {
-                router.push('/auth');
+            // Remember where they were headed so sign-in can send them back there.
+            if (!user && !pathname.startsWith('/auth') && !hasSignedOut()) {
+                const search = typeof window !== 'undefined' ? window.location.search : '';
+                router.replace(`/auth?next=${encodeURIComponent(pathname + search)}`);
             }
         }
-    }, [user, loading, router, pathname, isClient]);
+    }, [user, loading, router, pathname, isClient, hasSignedOut]);
 
-    // Skeleton shell while checking authentication, so the layout does not jump on arrival
-    if (loading || !isClient) {
+    // Skeleton shell while checking authentication (and while redirecting a signed-out visitor),
+    // so protected pages are never rendered for someone who is not signed in.
+    if (loading || !isClient || !user) {
         return (
             <div className="min-h-[100dvh]" role="status" aria-label="Loading">
                 <div className="fixed bottom-3 left-3 top-3 hidden w-[248px] md:block">

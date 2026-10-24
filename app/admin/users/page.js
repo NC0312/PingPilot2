@@ -55,6 +55,8 @@ export default function UsersManagement() {
     const [selectedUser, setSelectedUser] = useState(null);
     const [editForm, setEditForm] = useState({ displayName: '', role: 'user' });
     const [saving, setSaving] = useState(false);
+    const [editError, setEditError] = useState(null);
+    const [confirmRoleChange, setConfirmRoleChange] = useState(false);
 
     const [roleTarget, setRoleTarget] = useState(null);
     const [changingRole, setChangingRole] = useState(false);
@@ -64,7 +66,8 @@ export default function UsersManagement() {
             setRefreshing(true);
             setError(null);
 
-            const response = await apiRequest('/api/users', { method: 'GET' });
+            // The API pages its results (default 50); the page shows one list, so ask for the maximum
+            const response = await apiRequest('/api/users?limit=200', { method: 'GET' });
 
             if (response.status !== 'success') {
                 throw new Error(response.message || 'Failed to fetch users');
@@ -93,7 +96,7 @@ export default function UsersManagement() {
 
     const isSelf = (u) => currentUser?.id === idOf(u) || currentUser?._id === idOf(u);
 
-    const confirmRoleChange = async () => {
+    const confirmPromoteDemote = async () => {
         if (!roleTarget) return;
         const nextRole = roleTarget.role === 'admin' ? 'user' : 'admin';
         try {
@@ -114,18 +117,29 @@ export default function UsersManagement() {
     const openEdit = (u) => {
         setSelectedUser(u);
         setEditForm({ displayName: u.displayName || '', role: u.role || 'user' });
+        setEditError(null);
+        setConfirmRoleChange(false);
     };
 
     const handleSaveEdit = async () => {
         if (!selectedUser) return;
+
+        // Changing a role has the same weight as the Promote/Demote buttons, which ask first.
+        if (editForm.role !== (selectedUser.role || 'user') && !confirmRoleChange) {
+            setConfirmRoleChange(true);
+            return;
+        }
+
         try {
+            setEditError(null);
             setSaving(true);
             setActionError(null);
             const userId = idOf(selectedUser);
 
             const response = await apiRequest(`/api/users/${userId}`, {
                 method: 'PATCH',
-                body: JSON.stringify({ displayName: editForm.displayName, role: editForm.role }),
+                // The users API calls the display name `name` and stores it as displayName.
+                body: JSON.stringify({ name: editForm.displayName, role: editForm.role }),
             });
 
             if (response.status !== 'success') {
@@ -136,14 +150,16 @@ export default function UsersManagement() {
             setSelectedUser(null);
         } catch (err) {
             console.error('Error updating user:', err);
-            setSelectedUser(null);
-            setActionError('We couldn’t save those changes. Try again.');
+            // Keep the dialog open so the edits aren't lost.
+            setEditError('We couldn’t save those changes. Try again.');
+            setConfirmRoleChange(false);
         } finally {
             setSaving(false);
         }
     };
 
-    const Actions = ({ u }) => {
+    // A render function rather than a component, so rows keep their buttons (and focus) across re-renders.
+    const renderActions = (u) => {
         const self = isSelf(u);
         return (
             <div className="flex items-center justify-end gap-1">
@@ -237,7 +253,7 @@ export default function UsersManagement() {
                                                 <TableCell className="font-mono text-[13px] text-muted-foreground">{u.email}</TableCell>
                                                 <TableCell><VerifiedBadge verified={u.emailVerified} /></TableCell>
                                                 <TableCell><RoleBadge role={u.role} /></TableCell>
-                                                <TableCell><Actions u={u} /></TableCell>
+                                                <TableCell>{renderActions(u)}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -258,7 +274,7 @@ export default function UsersManagement() {
                                             <RoleBadge role={u.role} />
                                             <VerifiedBadge verified={u.emailVerified} />
                                         </div>
-                                        <Actions u={u} />
+                                        {renderActions(u)}
                                     </li>
                                 ))}
                             </ul>
@@ -276,16 +292,24 @@ export default function UsersManagement() {
                 footer={
                     <>
                         <Button variant="ghost" onClick={() => setSelectedUser(null)} disabled={saving}>Cancel</Button>
-                        <Button onClick={handleSaveEdit} disabled={saving}>{saving ? 'Saving' : 'Save changes'}</Button>
+                        <Button onClick={handleSaveEdit} disabled={saving}>{saving ? 'Saving' : confirmRoleChange ? 'Confirm and save' : 'Save changes'}</Button>
                     </>
                 }
             >
                 <div className="space-y-5">
+                    {editError && <Alert tone="error" title={editError} />}
+                    {confirmRoleChange && (
+                        <Alert tone="warning" title={editForm.role === 'admin' ? 'Make this user an admin?' : 'Remove this user’s admin access?'}>
+                            {editForm.role === 'admin'
+                                ? 'Admins can see every account, server and support ticket, and can change other users’ roles.'
+                                : 'They will lose access to the admin area immediately.'}
+                        </Alert>
+                    )}
                     <Field id="displayName" label="Display name">
                         <Input id="displayName" value={editForm.displayName} onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })} />
                     </Field>
                     <Field id="role" label="Role" hint={editingSelf ? 'You can’t change your own role.' : undefined}>
-                        <Select value={editForm.role} onValueChange={(role) => setEditForm({ ...editForm, role })} disabled={editingSelf}>
+                        <Select value={editForm.role} onValueChange={(role) => { setEditForm({ ...editForm, role }); setConfirmRoleChange(false); }} disabled={editingSelf}>
                             <SelectTrigger id="role" className="w-full"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="user">User</SelectItem>
@@ -309,7 +333,7 @@ export default function UsersManagement() {
                 footer={
                     <>
                         <Button variant="ghost" onClick={() => setRoleTarget(null)} disabled={changingRole}>Cancel</Button>
-                        <Button variant={roleTarget?.role === 'admin' ? 'destructive' : 'default'} onClick={confirmRoleChange} disabled={changingRole}>
+                        <Button variant={roleTarget?.role === 'admin' ? 'destructive' : 'default'} onClick={confirmPromoteDemote} disabled={changingRole}>
                             {changingRole ? 'Saving' : roleTarget?.role === 'admin' ? 'Remove admin access' : 'Make admin'}
                         </Button>
                     </>

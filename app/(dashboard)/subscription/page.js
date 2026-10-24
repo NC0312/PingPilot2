@@ -49,7 +49,10 @@ const COMPARE_ROWS = [
 const formatDate = (d) =>
     d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
 
-function validateField(name, value) {
+// American Express card numbers start with 34 or 37 and use a 4-digit security code.
+const isAmex = (cardNumber = '') => /^3[47]/.test(cardNumber.replace(/\D/g, ''));
+
+function validateField(name, value, cardNumber) {
     const digits = value.replace(/\D/g, '');
     switch (name) {
         case 'cardName':
@@ -65,7 +68,7 @@ function validateField(name, value) {
             return end <= new Date() ? 'This card has expired.' : '';
         }
         case 'cvv':
-            return digits.length < 3 ? 'Enter the 3-digit code.' : '';
+            return digits.length < (isAmex(cardNumber) ? 4 : 3) ? `Enter the ${isAmex(cardNumber) ? 4 : 3}-digit code.` : '';
         default:
             return '';
     }
@@ -90,7 +93,7 @@ function SubscriptionContent() {
 
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user, apiRequest, isAdmin } = useAuth();
+    const { user, apiRequest, isAdmin, refreshUser } = useAuth();
 
     const selectedPlan = planId(tier, billing);
     const plan = getPlan(selectedPlan);
@@ -145,7 +148,7 @@ function SubscriptionContent() {
             const d = value.replace(/\D/g, '').slice(0, 4);
             next = d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
         } else if (name === 'cvv') {
-            next = value.replace(/\D/g, '').slice(0, 3);
+            next = value.replace(/\D/g, '').slice(0, isAmex(formData.cardNumber) ? 4 : 3);
         }
 
         setFormData((f) => ({ ...f, [name]: next }));
@@ -154,13 +157,13 @@ function SubscriptionContent() {
 
     const handleBlur = (e) => {
         const { name, value } = e.target;
-        setErrors((er) => ({ ...er, [name]: validateField(name, value) }));
+        setErrors((er) => ({ ...er, [name]: validateField(name, value, formData.cardNumber) }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        const nextErrors = Object.fromEntries(Object.keys(formData).map((k) => [k, validateField(k, formData[k])]));
+        const nextErrors = Object.fromEntries(Object.keys(formData).map((k) => [k, validateField(k, formData[k], formData.cardNumber)]));
         setErrors(nextErrors);
         if (Object.values(nextErrors).some(Boolean)) return;
 
@@ -168,10 +171,7 @@ function SubscriptionContent() {
         setError(null);
 
         try {
-            // Payment is simulated until a processor is connected.
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-
-            const response = await apiRequest('/api/users/me', {
+            await apiRequest('/api/users/me', {
                 method: 'PATCH',
                 body: JSON.stringify({
                     subscription: {
@@ -183,8 +183,13 @@ function SubscriptionContent() {
                 }),
             });
 
-            if (response.status !== 'success') {
-                throw new Error(response.message || 'Failed to update subscription');
+            // Only report success once the server says the plan changed. Re-reading the user also
+            // refreshes the plan limits used everywhere else in the app (add-server, frequency, webhooks).
+            const updated = await refreshUser();
+            if (updated?.subscription?.plan !== selectedPlan) {
+                throw new Error(
+                    'Online upgrades aren’t available yet, so your plan has not changed and you have not been charged. Contact support to change your plan.'
+                );
             }
 
             setSuccess(true);
@@ -517,7 +522,7 @@ function SubscriptionContent() {
                                             <Input id="expiry" name="expiry" inputMode="numeric" autoComplete="cc-exp" value={formData.expiry} onChange={handleInputChange} onBlur={handleBlur} placeholder="MM/YY" maxLength={5} className="font-mono tabular-nums" aria-invalid={!!errors.expiry} aria-describedby={errors.expiry ? 'expiry-msg' : undefined} />
                                         </Field>
                                         <Field id="cvv" label="CVV" error={errors.cvv}>
-                                            <Input id="cvv" name="cvv" inputMode="numeric" autoComplete="cc-csc" value={formData.cvv} onChange={handleInputChange} onBlur={handleBlur} placeholder="123" maxLength={3} className="font-mono tabular-nums" aria-invalid={!!errors.cvv} aria-describedby={errors.cvv ? 'cvv-msg' : undefined} />
+                                            <Input id="cvv" name="cvv" inputMode="numeric" autoComplete="cc-csc" value={formData.cvv} onChange={handleInputChange} onBlur={handleBlur} placeholder={isAmex(formData.cardNumber) ? '1234' : '123'} maxLength={4} className="font-mono tabular-nums" aria-invalid={!!errors.cvv} aria-describedby={errors.cvv ? 'cvv-msg' : undefined} />
                                         </Field>
                                     </div>
 

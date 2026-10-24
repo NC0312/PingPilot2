@@ -14,12 +14,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Reveal } from '@/components/ui/reveal';
 import { StatusDot } from '@/components/ui/status';
 import { timeAgo } from '@/lib/time';
+import { getApiUrl } from '@/lib/apiConfig';
 
+// Only what /health actually reports: the API answering, MongoDB and Redis (which backs the job queue).
 const SERVICE_LABELS = {
     api: 'API',
     database: 'Database',
-    notification: 'Notifications',
-    monitoring: 'Monitoring',
+    queue: 'Job queue',
 };
 
 const QUICK_LINKS = [
@@ -53,13 +54,13 @@ function Tile({ title, value, unit, hint, big = false, className = '', delay = 0
 }
 
 export default function AdminDashboard() {
-    const [stats, setStats] = useState({ users: 0, servers: 0, alerts: 0, uptime: 0 });
+    // null until the analytics call succeeds, so a failed load shows "—" rather than a false 0%
+    const [stats, setStats] = useState(null);
     const [recentActivity, setRecentActivity] = useState([]);
     const [systemStatus, setSystemStatus] = useState({
-        api: 'Operational',
-        database: 'Operational',
-        notification: 'Operational',
-        monitoring: 'Operational',
+        api: 'Checking',
+        database: 'Checking',
+        queue: 'Checking',
     });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -86,7 +87,7 @@ export default function AdminDashboard() {
                 users: kpis.activeUsers || 0,
                 servers: kpis.activeServers || 0,
                 alerts: (analyticsResponse.data.alertsByType || []).reduce((total, item) => total + item.value, 0),
-                uptime: kpis.uptime || 0,
+                uptime: kpis.uptime ?? null, // null = no checks in the period, shown as "—" instead of 0%
             });
 
             const serversResponse = await apiRequest('/api/servers?admin=true&limit=5&sortBy=updatedAt&sortDir=desc', { method: 'GET' });
@@ -118,7 +119,8 @@ export default function AdminDashboard() {
                             server: server.name,
                             status: server.status,
                             changed: !!server.lastStatusChange,
-                            at: server.uploadedAt || server.createdAt || server.updatedAt,
+                            // A status line should carry the time of the change; "added" lines carry the creation time.
+                            at: server.lastStatusChange || server.uploadedAt || server.createdAt || server.updatedAt,
                         };
                     } catch (err) {
                         console.error('Error processing recent activity:', err);
@@ -129,13 +131,18 @@ export default function AdminDashboard() {
 
             setRecentActivity(activities.filter(Boolean));
 
+            // /health answers 503 with a body when a dependency is down, so read it directly instead of through apiRequest.
             try {
-                const healthResponse = await apiRequest('/health', { method: 'GET' });
-                if (healthResponse.status === 'success') {
-                    setSystemStatus((prev) => ({ ...prev, api: 'Operational' }));
-                }
+                const healthResponse = await fetch(getApiUrl('/health'));
+                const health = await healthResponse.json();
+                const label = (state) => (state === 'up' ? 'Operational' : 'Down');
+                setSystemStatus({
+                    api: 'Operational',
+                    database: label(health.checks?.mongodb),
+                    queue: label(health.checks?.redis),
+                });
             } catch (err) {
-                setSystemStatus((prev) => ({ ...prev, api: 'Partial outage' }));
+                setSystemStatus({ api: 'Unreachable', database: 'Unknown', queue: 'Unknown' });
             }
         } catch (err) {
             console.error('Error fetching admin stats:', err);
@@ -174,9 +181,9 @@ export default function AdminDashboard() {
             )}
 
             <section aria-label="Key numbers" className="grid grid-cols-1 gap-4 md:grid-cols-12">
-                <Tile title="System uptime" big loading={loading} value={stats.uptime} unit="%" hint={`Last 30 days · ${stats.alerts} ${stats.alerts === 1 ? 'alert' : 'alerts'} sent`} className="md:col-span-5" />
-                <Tile title="Active users" loading={loading} value={stats.users} className="md:col-span-3" delay={70} />
-                <Tile title="Monitored servers" loading={loading} value={stats.servers} className="md:col-span-4" delay={140} />
+                <Tile title="System uptime" big loading={loading} value={stats?.uptime ?? '—'} unit={stats?.uptime != null ? '%' : undefined} hint={stats ? `Last 30 days · ${stats.alerts} ${stats.alerts === 1 ? 'alert' : 'alerts'} sent` : undefined} className="md:col-span-5" />
+                <Tile title="Active users" loading={loading} value={stats ? stats.users : '—'} className="md:col-span-3" delay={70} />
+                <Tile title="Monitored servers" loading={loading} value={stats ? stats.servers : '—'} className="md:col-span-4" delay={140} />
             </section>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
@@ -223,8 +230,8 @@ export default function AdminDashboard() {
                                     {Object.entries(systemStatus).map(([service, status]) => (
                                         <li key={service} className="flex items-center justify-between text-sm">
                                             <span className="text-muted-foreground">{SERVICE_LABELS[service] || service}</span>
-                                            <span className={`inline-flex items-center gap-2 ${status === 'Operational' ? 'text-success' : 'text-warning'}`}>
-                                                <StatusDot status={status === 'Operational' ? 'up' : 'warning'} />
+                                            <span className={`inline-flex items-center gap-2 ${status === 'Operational' ? 'text-success' : status === 'Checking' || status === 'Unknown' ? 'text-muted-foreground' : 'text-destructive'}`}>
+                                                <StatusDot status={status === 'Operational' ? 'up' : status === 'Checking' || status === 'Unknown' ? 'unknown' : 'down'} />
                                                 {status}
                                             </span>
                                         </li>

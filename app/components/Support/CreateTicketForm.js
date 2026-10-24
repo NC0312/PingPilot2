@@ -1,7 +1,7 @@
 // app/components/Support/CreateTicketForm.js
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -28,6 +28,9 @@ const CreateTicketForm = () => {
     const [success, setSuccess] = useState(false);
     const router = useRouter();
     const { apiRequest } = useAuth();
+    const redirectTimer = useRef(null);
+
+    useEffect(() => () => clearTimeout(redirectTimer.current), []);
 
     const {
         register,
@@ -56,7 +59,7 @@ const CreateTicketForm = () => {
 
             if (response.status === 'success') {
                 setSuccess(true);
-                setTimeout(() => {
+                redirectTimer.current = setTimeout(() => {
                     router.push('/support/tickets');
                 }, 2000);
             } else {

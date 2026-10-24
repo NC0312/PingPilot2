@@ -25,14 +25,14 @@ export const metadata = {
     template: "%s · Ping Pilott",
   },
   description:
-    "Ping Pilott checks your websites and servers every minute, alerts you the moment something goes down, and keeps a clear history of every incident.",
+    "Ping Pilott checks your websites and servers on a schedule, as often as every minute on paid plans, alerts you the moment something goes down, and keeps a clear history of every incident.",
   icons: {
     icon: [{ url: "/favicon.png", type: "image/png" }],
   },
   openGraph: {
     title: "Ping Pilott — Uptime monitoring",
     description:
-      "Know about downtime before your customers do. Checks every minute, instant alerts, full incident history.",
+      "Know about downtime before your customers do. Scheduled checks, instant alerts, full incident history.",
     images: [{ url: "/banner.png" }],
     type: "website",
   },

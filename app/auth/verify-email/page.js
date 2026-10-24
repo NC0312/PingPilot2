@@ -1,7 +1,7 @@
 'use client';
 
-import React, { Suspense, useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import React, { Suspense, useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { EnvelopeSimple, CheckCircle, SignIn, LinkBreak, ArrowsClockwise } from '@phosphor-icons/react';
 import { useAuth } from '../../context/AuthContext';
 import Link from 'next/link';
@@ -16,7 +16,6 @@ function VerifyEmail() {
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(false);
 
-    const router = useRouter();
     const searchParams = useSearchParams();
     const { user, verifyEmail, resendVerificationEmail } = useAuth();
 
@@ -36,8 +35,15 @@ function VerifyEmail() {
         }
     }, [isSuccess]);
 
+    // A token can only be used once, so each link is verified exactly once, however often this re-renders.
+    const attempted = useRef(null);
+
     // Verify email token on page load
     useEffect(() => {
+        const key = `${token}:${userId}`;
+        if (attempted.current === key) return;
+        if (token && userId && !isSuccess) attempted.current = key;
+
         const verifyEmailToken = async () => {
             if (isSuccess) return; // Skip verification if success is in URL
 
@@ -70,11 +76,6 @@ function VerifyEmail() {
 
     // Function to resend verification email
     const handleResendVerification = async () => {
-        if (!user) {
-            router.push('/auth');
-            return;
-        }
-
         setVerifying(true);
         setError(null);
 
@@ -126,10 +127,24 @@ function VerifyEmail() {
 
                     {error && <Alert tone="error">{error}</Alert>}
 
-                    <Button type="button" size="lg" className="w-full" onClick={handleResendVerification} disabled={verifying}>
-                        {!verifying && <ArrowsClockwise weight="light" />}
-                        {verifying ? 'Sending' : 'Resend verification email'}
-                    </Button>
+                    {user ? (
+                        <Button type="button" size="lg" className="w-full" onClick={handleResendVerification} disabled={verifying}>
+                            {!verifying && <ArrowsClockwise weight="light" />}
+                            {verifying ? 'Sending' : 'Resend verification email'}
+                        </Button>
+                    ) : (
+                        <>
+                            <p className="text-sm text-muted-foreground">
+                                Sign in with your email and password and we can send you a new link from there.
+                            </p>
+                            <Button asChild size="lg" className="w-full justify-between pl-6">
+                                <Link href="/auth">
+                                    Sign in to get a new link
+                                    <ButtonArrow />
+                                </Link>
+                            </Button>
+                        </>
+                    )}
 
                     <Link
                         href="/auth"

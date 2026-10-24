@@ -33,24 +33,50 @@ function AuthForm() {
     const [loading, setLoading] = useState(false);
     const [authError, setAuthError] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
-    const [unverifiedUser, setUnverifiedUser] = useState(null);
+    const [unverifiedEmail, setUnverifiedEmail] = useState(null);
     const [resendingVerification, setResendingVerification] = useState(false);
+    const [resendError, setResendError] = useState(null);
 
     const router = useRouter();
-    const { user, login, loginWithoutVerification, signup, resendVerificationEmail } = useAuth();
+    const { user, login, signup, resendVerificationEmail } = useAuth();
 
-    // Redirect if already logged in
+    // Where to go once signed in: the page they were sent away from, if it is a local path.
+    const isLocalPath = (v) => !!v && v.startsWith('/') && !v.startsWith('//');
+    const rawNext = searchParams.get('next');
+    const urlNext = isLocalPath(rawNext) ? rawNext : null;
+
+    // Sign-up is followed by an email round trip, so remember the destination across it.
+    useEffect(() => {
+        try {
+            if (urlNext) localStorage.setItem('pp.afterAuth', JSON.stringify({ path: urlNext, at: Date.now() }));
+            // A fresh sign-up with no destination (e.g. the free plan) shouldn't inherit an old paid-plan choice.
+            else if (searchParams.get('mode') === 'signup') localStorage.removeItem('pp.afterAuth');
+        } catch { /* storage unavailable */ }
+    }, [urlNext, searchParams]);
+
+    // The remembered destination expires after a day, the lifetime of the verification email's link.
+    const getStoredNext = () => {
+        try {
+            const saved = JSON.parse(localStorage.getItem('pp.afterAuth') || 'null');
+            return saved && Date.now() - saved.at < 24 * 60 * 60 * 1000 && isLocalPath(saved.path) ? saved.path : null;
+        } catch {
+            return null;
+        }
+    };
+    const nextPath = urlNext || getStoredNext() || '/dashboard';
+
+    // Redirect once signed in (covers both a fresh login and visiting this page while already signed in)
     useEffect(() => {
         if (user && user.emailVerified) {
-            router.push('/');
+            try { localStorage.removeItem('pp.afterAuth'); } catch { /* ignore */ }
+            router.replace(nextPath);
         }
-    }, [user, router]);
+    }, [user, router, nextPath]);
 
     const {
         register: loginRegister,
         handleSubmit: handleLoginSubmit,
-        formState: { errors: loginErrors },
-        getValues: getLoginValues
+        formState: { errors: loginErrors }
     } = useForm({
         defaultValues: { email: '', password: '' }
     });
@@ -66,46 +92,47 @@ function AuthForm() {
 
     const passwordValue = watch('password', '');
 
+    // Follow the address too: a link to /auth?mode=signup while already on this page should switch the tab.
+    const urlWantsLogin = searchParams.get('mode') !== 'signup';
+    useEffect(() => {
+        setIsLogin(urlWantsLogin);
+        setAuthError(null);
+        setSuccessMessage(null);
+        setUnverifiedEmail(null);
+        setResendError(null);
+    }, [urlWantsLogin]);
+
     const setMode = (login) => {
         if (login === isLogin) return;
         setIsLogin(login);
         setAuthError(null);
         setSuccessMessage(null);
-        setUnverifiedUser(null);
+        setUnverifiedEmail(null);
+        setResendError(null);
     };
 
     const toggleFormMode = () => setMode(!isLogin);
 
     const handleAuthError = (error) => {
-        if (error.message === 'email_not_verified') {
-            // Handle unverified email specially
-            setAuthError(ERROR_MESSAGES[error.message]);
-            return true;
-        } else {
-            const message = error.message || 'Authentication failed';
-            setAuthError(ERROR_MESSAGES[message] || message);
-            return false;
+        // fetch rejects with a TypeError when the server can't be reached at all
+        if (error instanceof TypeError) {
+            setAuthError('We can’t reach the server. Check your connection and try again.');
+            return;
         }
+        const message = error.message || 'Authentication failed';
+        setAuthError(ERROR_MESSAGES[message] || message);
     };
 
     const resendVerification = async () => {
+        if (!unverifiedEmail) return;
         try {
             setResendingVerification(true);
-
-            // If we have an unverified user, use that data
-            if (unverifiedUser) {
-                await resendVerificationEmail();
-                setSuccessMessage('Verification email sent. Check your inbox.');
-            } else {
-                // Otherwise, try to login without verification to get the user data
-                const values = getLoginValues();
-                await loginWithoutVerification(values.email, values.password);
-                await resendVerificationEmail();
-                setSuccessMessage('Verification email sent. Check your inbox.');
-            }
+            setResendError(null);
+            await resendVerificationEmail(unverifiedEmail);
+            setSuccessMessage('Verification email sent. Check your inbox.');
         } catch (error) {
             console.error('Resend verification error:', error);
-            setAuthError('We couldn’t resend the verification email. Please try again.');
+            setResendError('We couldn’t resend the verification email. Please try again.');
         } finally {
             setResendingVerification(false);
         }
@@ -114,22 +141,20 @@ function AuthForm() {
     const onLoginSubmit = async (data) => {
         setLoading(true);
         setAuthError(null);
-        setUnverifiedUser(null);
+        setSuccessMessage(null);
+        setResendError(null);
+        setUnverifiedEmail(null);
 
         try {
             await login(data.email, data.password);
-            // AuthContext handles redirect
+            // The effect above redirects once the user is set
         } catch (error) {
             console.error('Login error:', error);
             if (error.message === 'email_not_verified') {
-                try {
-                    const userData = await loginWithoutVerification(data.email, data.password);
-                    setUnverifiedUser(userData);
-                } catch (innerError) {
-                    console.error('Secondary login error:', innerError);
-                }
+                setUnverifiedEmail(data.email);
+            } else {
+                handleAuthError(error);
             }
-            handleAuthError(error);
         } finally {
             setLoading(false); // Component controls its own loading
         }
@@ -138,10 +163,11 @@ function AuthForm() {
     const onRegisterSubmit = async (data) => {
         setLoading(true);
         setAuthError(null);
+        setResendError(null);
 
         try {
-            const userData = await signup(data.email, data.password, data.name);
-            setUnverifiedUser(userData);
+            await signup(data.email, data.password, data.name);
+            setUnverifiedEmail(data.email);
             setSuccessMessage('Account created. Check your email to verify your account.');
         } catch (error) {
             console.error('Registration error:', error);
@@ -151,7 +177,7 @@ function AuthForm() {
         }
     };
 
-    const showVerifyNotice = authError === ERROR_MESSAGES['email_not_verified'] || (unverifiedUser && !authError);
+    const showVerifyNotice = !!unverifiedEmail;
 
     const verificationNotice = (
         <Alert
@@ -163,7 +189,7 @@ function AuthForm() {
                 </Button>
             }
         >
-            We sent a link to your inbox. Open it, then sign in.
+            We sent a link to {unverifiedEmail}. Open it, then sign in.
         </Alert>
     );
 
@@ -176,7 +202,7 @@ function AuthForm() {
         <AuthShell>
             <AuthHeading
                 title={isLogin ? 'Sign in' : 'Create your account'}
-                description={isLogin ? 'Welcome back. Pick up where you left off.' : 'Start your free trial. No setup needed.'}
+                description={isLogin ? (rawNext ? 'Sign in to continue.' : 'Welcome back. Pick up where you left off.') : 'Start your free trial. No setup needed.'}
             />
 
             <div
@@ -210,6 +236,7 @@ function AuthForm() {
                     <Alert tone="error" title={authError} />
                 ) : null}
 
+                {resendError && <Alert tone="error" title={resendError} />}
                 {successMessage && <Alert tone="success">{successMessage}</Alert>}
 
                 {isLogin ? (
@@ -246,7 +273,7 @@ function AuthForm() {
 
                         <SubmitButton loading={loading} loadingText="Signing in">Sign in</SubmitButton>
                     </form>
-                ) : (
+                ) : unverifiedEmail ? null : (
                     <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-5" noValidate>
                         <Field id="register-name" label="Name" error={registerErrors.name?.message}>
                             <IconInput

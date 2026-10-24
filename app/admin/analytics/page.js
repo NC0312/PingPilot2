@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
@@ -73,7 +73,7 @@ function Tile({ title, value, unit, change, better, className = '', big = false,
                     <div>
                         <p className={`font-display font-medium tracking-tight tabular-nums ${big ? 'text-6xl' : 'text-4xl'}`}>
                             {value}
-                            {unit && <span className="ml-1 text-lg font-normal text-muted-foreground">{unit}</span>}
+                            {unit && value !== '—' && <span className="ml-1 text-lg font-normal text-muted-foreground">{unit}</span>}
                         </p>
                         {change !== undefined && <div className="mt-2"><Delta change={change} better={better} /></div>}
                         {children}
@@ -121,8 +121,11 @@ export default function AdminAnalytics() {
     const [kpis, setKpis] = useState({});
 
     const { apiRequest } = useAuth();
+    // Only the newest request may update the page, so quickly switching ranges can't show old data.
+    const requestId = useRef(0);
 
     const fetchAnalyticsData = async (isInitialLoad = true) => {
+        const thisRequest = ++requestId.current;
         if (isInitialLoad) setLoading(true);
         setError(null);
         setRefreshing(true);
@@ -145,6 +148,7 @@ export default function AdminAnalytics() {
             });
 
             const response = await apiRequest(`/api/admin/analytics?${query}`, { method: 'GET' });
+            if (thisRequest !== requestId.current) return;
 
             if (response.status !== 'success') {
                 throw new Error(response.message || 'Failed to fetch analytics data');
@@ -159,11 +163,14 @@ export default function AdminAnalytics() {
             });
             setKpis(analyticsData.kpis || {});
         } catch (err) {
+            if (thisRequest !== requestId.current) return;
             console.error('Error fetching analytics data:', err);
             setError('We couldn’t load analytics. Check your connection and try again.');
         } finally {
-            if (isInitialLoad) setLoading(false);
-            setRefreshing(false);
+            if (thisRequest === requestId.current) {
+                if (isInitialLoad) setLoading(false);
+                setRefreshing(false);
+            }
         }
     };
 

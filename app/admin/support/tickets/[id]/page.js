@@ -71,7 +71,13 @@ export default function AdminTicketDetail() {
             }
         } catch (err) {
             console.error('Error fetching ticket:', err);
-            setError('We couldn’t load this ticket. Check your connection and try again.');
+            // A missing or off-limits ticket is an answer, not a connection problem: show the "not found" screen.
+            if (/not found|not authorized|permission|forbidden|invalid/i.test(err?.message || '')) {
+                setTicket(null);
+                setError(null);
+            } else {
+                setError('We couldn’t load this ticket. Check your connection and try again.');
+            }
         } finally {
             setLoading(false);
             setRefreshing(false);

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Lock, Key, CheckCircle, LinkBreak } from '@phosphor-icons/react';
 import Link from 'next/link';
+import { useAuth } from '../../context/AuthContext';
 import { Alert } from '@/components/ui/alert';
 import { Button, ButtonArrow } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
@@ -19,6 +20,7 @@ function ResetPasswordForm() {
     const [tokenValid, setTokenValid] = useState(false);
 
     const searchParams = useSearchParams();
+    const { completePasswordReset } = useAuth();
 
     // Get token and userId from URL params
     const token = searchParams.get('token');
@@ -75,24 +77,7 @@ function ResetPasswordForm() {
                 throw new Error('Invalid reset token');
             }
 
-            // Make API request to reset password
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://ping-pilott-backend.onrender.com'}/api/auth/reset-password`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    token,
-                    userId,
-                    password: data.password
-                }),
-            });
-
-            const responseData = await response.json();
-
-            if (!response.ok) {
-                throw new Error(responseData.message || 'Failed to reset password');
-            }
+            await completePasswordReset(token, userId, data.password);
 
             setSuccess(true);
         } catch (err) {

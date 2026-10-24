@@ -1,26 +1,10 @@
-'use client';
+import AdminShell from './AdminShell';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/app/context/AuthContext';
-import AppShell from '@/app/components/Layout/AppShell';
-import ProtectedRoute from '../components/ProtectedRoute';
+// A title template here keeps the \"· Ping Pilott\" suffix on the nested pages below.
+export const metadata = { title: { default: 'Admin overview', template: '%s · Ping Pilott' } };
 
-// Admin pages render their own PageHeader inside AppShell, like every other screen.
+// Authentication, the admin role check and the page chrome live in AdminShell (a client component);
+// this file stays a server component so the admin pages can set their own titles.
 export default function AdminLayout({ children }) {
-    const { user, loading } = useAuth();
-    const router = useRouter();
-
-    // Signed-in non-admins are sent back to their dashboard instead of seeing pages that cannot load.
-    useEffect(() => {
-        if (!loading && user && user.role !== 'admin') {
-            router.replace('/dashboard');
-        }
-    }, [user, loading, router]);
-
-    return (
-        <ProtectedRoute>
-            <AppShell>{user?.role === 'admin' ? children : null}</AppShell>
-        </ProtectedRoute>
-    );
+    return <AdminShell>{children}</AdminShell>;
 }

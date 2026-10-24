@@ -6,6 +6,10 @@ import { Reveal } from '@/components/ui/reveal'
 
 const SIGNUP = '/auth?mode=signup'
 
+// Paid plans carry the chosen plan through sign-up, so the user lands on checkout for it afterwards.
+const signupFor = (tier, yearly) =>
+    `${SIGNUP}&next=${encodeURIComponent(`/subscription?plan=${tier}_${yearly ? 'yearly' : 'monthly'}`)}`
+
 function buildPlans(yearly) {
     const per = yearly ? 'per year · save 17%' : 'per month'
     return [
@@ -35,7 +39,7 @@ function buildPlans(yearly) {
                 { included: true, text: 'Historical reporting' },
             ],
             buttonText: 'Choose Starter',
-            href: SIGNUP,
+            href: signupFor('starter', yearly),
         },
         {
             title: 'Pro',
@@ -45,11 +49,11 @@ function buildPlans(yearly) {
             features: [
                 { included: true, text: '30 URLs monitored' },
                 { included: true, text: '1-minute check interval' },
-                { included: true, text: 'Email and SMS alerts' },
+                { included: true, text: 'Email alerts' },
                 { included: true, text: 'Priority support' },
             ],
             buttonText: 'Choose Pro',
-            href: SIGNUP,
+            href: signupFor('pro', yearly),
             featured: true,
             tag: 'Most popular',
         },
@@ -65,7 +69,7 @@ function buildPlans(yearly) {
                 { included: true, text: 'API access' },
             ],
             buttonText: 'Choose Business',
-            href: SIGNUP,
+            href: signupFor('business', yearly),
             tag: 'Best value',
         },
     ]

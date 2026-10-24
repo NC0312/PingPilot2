@@ -29,6 +29,9 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Alert } from "@/components/ui/alert"
 
 const PRIORITY_RANK = { urgent: 0, high: 1, medium: 2, low: 3 }
+// Only a reply from the support team counts: a customer's own follow-up still leaves them waiting.
+const hasStaffReply = (t) => !!t.responses?.some((r) => r.fromAdmin)
+
 const STATUS_RANK = { open: 0, in_progress: 1, resolved: 2, closed: 3 }
 
 export default function AdminTicketManager() {
@@ -50,7 +53,7 @@ export default function AdminTicketManager() {
             setRefreshing(true)
             setError(null)
 
-            const response = await apiRequest("/api/support/admin/tickets", { method: "GET" })
+            const response = await apiRequest("/api/support/admin/tickets?limit=200", { method: "GET" })
 
             if (response.status !== "success") {
                 throw new Error(response.message || "Failed to load tickets")
@@ -118,12 +121,13 @@ export default function AdminTicketManager() {
     }, [tickets, statusFilter, priorityFilter, searchQuery, sortField, sortDirection])
 
     const openCount = tickets.filter((t) => t.status === "open").length
-    const awaiting = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved" && !t.responses?.length).length
+    const awaiting = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved" && !hasStaffReply(t)).length
 
-    const SortHead = ({ field, children }) => {
+    // Render functions, not components, so sorting or changing a status doesn't remount the controls.
+    const renderSortHead = (field, children) => {
         const active = sortField === field
         return (
-            <TableHead aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>
+            <TableHead key={field} aria-sort={active ? (sortDirection === "asc" ? "ascending" : "descending") : "none"}>
                 <button
                     type="button"
                     onClick={() => toggleSort(field)}
@@ -140,7 +144,7 @@ export default function AdminTicketManager() {
         )
     }
 
-    const StatusMenu = ({ ticket }) => (
+    const renderStatusMenu = (ticket) => (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label={`Change status of ${ticket.subject}`}>
@@ -256,11 +260,11 @@ export default function AdminTicketManager() {
                                 <Table>
                                     <TableHeader>
                                         <TableRow className="hover:bg-transparent">
-                                            <SortHead field="subject">Subject</SortHead>
-                                            <SortHead field="createdAt">Opened</SortHead>
-                                            <SortHead field="userPlan">Plan</SortHead>
-                                            <SortHead field="priority">Priority</SortHead>
-                                            <SortHead field="status">Status</SortHead>
+                                            {renderSortHead("subject", "Subject")}
+                                            {renderSortHead("createdAt", "Opened")}
+                                            {renderSortHead("userPlan", "Plan")}
+                                            {renderSortHead("priority", "Priority")}
+                                            {renderSortHead("status", "Status")}
                                             <TableHead className="text-right"><span className="sr-only">Actions</span></TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -276,7 +280,7 @@ export default function AdminTicketManager() {
                                                 <TableCell>
                                                     <p className="text-[13px] text-muted-foreground">{timeAgo(ticket.createdAt)}</p>
                                                     <p className="mt-0.5 flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
-                                                        {ticket.responses?.length ? (
+                                                        {hasStaffReply(ticket) ? (
                                                             <><Check weight="light" className="size-3.5 text-success" aria-hidden="true" />Replied</>
                                                         ) : (
                                                             <><Clock weight="light" className="size-3.5 text-warning" aria-hidden="true" />No reply yet</>
@@ -288,7 +292,7 @@ export default function AdminTicketManager() {
                                                 <TableCell><TicketStatusBadge status={ticket.status} /></TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex items-center justify-end gap-1">
-                                                        <StatusMenu ticket={ticket} />
+                                                        {renderStatusMenu(ticket)}
                                                         <Button asChild size="sm" variant="outline">
                                                             <Link href={`/admin/support/tickets/${ticket._id}`}>View</Link>
                                                         </Button>
@@ -317,10 +321,10 @@ export default function AdminTicketManager() {
                                         </div>
                                         <div className="flex items-center justify-between">
                                             <p className="text-xs text-muted-foreground">
-                                                Opened {timeAgo(ticket.createdAt)} · {ticket.responses?.length ? "replied" : "no reply yet"}
+                                                Opened {timeAgo(ticket.createdAt)} · {hasStaffReply(ticket) ? "replied" : "no reply yet"}
                                             </p>
                                             <div className="flex items-center gap-1">
-                                                <StatusMenu ticket={ticket} />
+                                                {renderStatusMenu(ticket)}
                                                 <Button asChild size="sm" variant="outline">
                                                     <Link href={`/admin/support/tickets/${ticket._id}`}>View</Link>
                                                 </Button>

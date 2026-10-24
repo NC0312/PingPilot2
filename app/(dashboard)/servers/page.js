@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Plus,
     HardDrives,
@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
 import { useSocket } from '@/app/components/providers/SocketProvider';
+import moment from 'moment-timezone';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatTimestamp } from '@/app/components/dateTimeUtils';
 import { PageContainer } from '@/app/components/Layout/AppShell';
@@ -27,7 +28,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge, StatusDot } from '@/components/ui/status';
 import { Reveal } from '@/components/ui/reveal';
-import { displayUrl, toHref, timeAgo } from '@/lib/time';
+import TrialNotice from '@/app/components/TrialNotice';
+import { displayUrl, toHref, timeAgo, formatPhone } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -41,6 +43,13 @@ const TABS = [
 const PRIORITY_BADGE = { high: 'destructive', medium: 'warning', low: 'default' };
 
 const idOf = (s) => s._id || s.id;
+
+// Day and time of a check as the server's schedule sees it. Schedules are kept in a timezone per server,
+// so the chart must filter by that clock and not by whatever timezone this browser happens to be in.
+const zoned = (value, tz) => {
+    const m = tz ? moment(value).tz(tz) : moment(value);
+    return { day: m.day(), hour: m.hour(), minute: m.minute() };
+};
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -181,6 +190,8 @@ export default function EnhancedServersPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState('overview');
     const { user, apiRequest } = useAuth();
+    // Each history request gets a number; only the newest one may update the chart.
+    const historyRequestId = useRef(0);
 
     // Fetch servers from API
     const fetchServers = async (isInitialLoad = true) => {
@@ -269,9 +280,7 @@ export default function EnhancedServersPage() {
                                 time: new Date(data.lastChecked),
                                 avgTime: data.latency || 0,
                                 status: data.status || 'unknown',
-                                day: new Date(data.lastChecked).getDay(),
-                                hour: new Date(data.lastChecked).getHours(),
-                                minute: new Date(data.lastChecked).getMinutes(),
+                                ...zoned(data.lastChecked, selectedServer?.timezone),
                                 formattedTime: formatTimestamp(new Date(data.lastChecked), null, 'HH:mm:ss')
                             };
 
@@ -293,13 +302,15 @@ export default function EnhancedServersPage() {
                 socket.on('server:update', handleUpdate);
 
                 // Immediate sync on reconnection
-                socket.on('connect', () => {
+                const handleConnect = () => {
                     fetchServers(false);
-                });
+                };
+                socket.on('connect', handleConnect);
 
                 return () => {
                     socket.off('server:update', handleUpdate);
-                    socket.off('connect');
+                    // Remove only this page's listener; the provider has its own 'connect' handler.
+                    socket.off('connect', handleConnect);
                     clearInterval(intervalId);
                 };
             }
@@ -310,11 +321,15 @@ export default function EnhancedServersPage() {
 
     // Fetch server history data. `forServer` carries the monitoring schedule used to filter points.
     const fetchServerHistory = async (serverId, forServer = selectedServer) => {
+        const requestId = ++historyRequestId.current;
         try {
             // Get the last 24 hours of history data
             const response = await apiRequest(`/api/servers/${serverId}/history?period=24h&limit=500`, {
                 method: 'GET'
             });
+
+            // A newer request (another server was selected meanwhile) owns the chart now.
+            if (requestId !== historyRequestId.current) return;
 
             if (response.status === 'success' && response.data.history) {
                 let historicalData = response.data.history.map(check => {
@@ -324,9 +339,7 @@ export default function EnhancedServersPage() {
                         avgTime: check.responseTime || 0,
                         status: check.status || 'unknown',
                         // Save original date components for filtering
-                        day: date.getDay(), // 0-6 (Sun-Sat)
-                        hour: date.getHours(),
-                        minute: date.getMinutes()
+                        ...zoned(date, forServer?.timezone) // day 0-6 (Sun-Sat), hour, minute on the server's clock
                     };
                 }).sort((a, b) => a.time - b.time); // Sort chronologically
 
@@ -415,9 +428,7 @@ export default function EnhancedServersPage() {
                         time: new Date(checkData.timestamp),
                         avgTime: checkData.responseTime || 0,
                         status: checkData.status || 'unknown',
-                        day: new Date(checkData.timestamp).getDay(),
-                        hour: new Date(checkData.timestamp).getHours(),
-                        minute: new Date(checkData.timestamp).getMinutes(),
+                        ...zoned(checkData.timestamp, selectedServer?.timezone),
                         formattedTime: formatTimestamp(new Date(checkData.timestamp), null, 'HH:mm:ss')
                     };
                     return [...prevHistory, newPoint].sort((a, b) => a.time - b.time);
@@ -474,8 +485,9 @@ export default function EnhancedServersPage() {
     const calculateDowntime = (periodHours) => {
         if (!responseTimeData || !selectedServer) return 0;
 
-        // Check interval from server settings (default 5 minutes)
-        const checkInterval = selectedServer.monitoring?.frequency || 5;
+        // The history API samples the last 24 hours into 5-minute buckets, so each point stands for
+        // at least 5 minutes (or the check interval, if that is longer).
+        const checkInterval = Math.max(selectedServer.monitoring?.frequency || 5, 5);
         const startTime = new Date(Date.now() - periodHours * 60 * 60 * 1000);
 
         const relevantData = responseTimeData.filter(point => point.time >= startTime);
@@ -486,7 +498,9 @@ export default function EnhancedServersPage() {
 
     const responseStats = useMemo(() => {
         if (responseTimeData.length === 0) return null;
-        const values = responseTimeData.map((p) => p.avgTime);
+        // Failed checks have no response time (stored as 0), so they must not count as "fastest" or pull the average down.
+        const values = responseTimeData.filter((p) => p.status === 'up' && p.avgTime > 0).map((p) => p.avgTime);
+        if (values.length === 0) return null;
         return {
             avg: Math.round(values.reduce((sum, v) => sum + v, 0) / values.length),
             max: Math.max(...values),
@@ -597,6 +611,8 @@ export default function EnhancedServersPage() {
                 }
                 actions={addButton}
             />
+
+            <TrialNotice servers={servers} />
 
             {error && (
                 <Alert tone="error" title="Something went wrong" action={<Button size="sm" variant="outline" onClick={() => fetchServers(false)}>Try again</Button>}>
@@ -726,7 +742,7 @@ export default function EnhancedServersPage() {
                                                 <p
                                                     className={cn(
                                                         'mt-3 font-display text-4xl font-medium tracking-tight tabular-nums',
-                                                        uptime === null ? 'text-muted-foreground' : parseFloat(uptime) >= 99.9 ? 'text-success' : 'text-warning'
+                                                        uptime === null ? 'text-muted-foreground' : parseFloat(uptime) >= 99.9 ? 'text-success' : parseFloat(uptime) >= 95 ? 'text-warning' : 'text-destructive'
                                                     )}
                                                 >
                                                     {uptime === null ? '—' : `${uptime}%`}
@@ -920,7 +936,7 @@ export default function EnhancedServersPage() {
                                                         {s.contactPhones?.map((phone) => (
                                                             <li key={phone} className="flex items-center gap-2 rounded-full bg-white/[0.05] px-3 py-1.5 text-sm ring-1 ring-white/10">
                                                                 <Phone weight="light" className="size-4 text-muted-foreground" />
-                                                                <span className="font-mono text-[13px] tabular-nums">{phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')}</span>
+                                                                <span className="font-mono text-[13px] tabular-nums">{formatPhone(phone)}</span>
                                                             </li>
                                                         ))}
                                                     </ul>

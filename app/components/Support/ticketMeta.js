@@ -17,13 +17,18 @@ export const PRIORITY_META = {
     low: { label: 'Low', variant: 'secondary' },
 };
 
-export const PLAN_META = {
-    free: { label: 'Free', variant: 'secondary' },
-    monthly: { label: 'Monthly', variant: 'default' },
-    halfYearly: { label: 'Half-yearly', variant: 'default' },
-    yearly: { label: 'Yearly', variant: 'default' },
-    admin: { label: 'Admin', variant: 'outline' },
-};
+// Plan ids are "<tier>_<billing>" (e.g. starter_monthly), plus free and admin.
+const TIER_LABEL = { starter: 'Starter', pro: 'Pro', business: 'Business' };
+
+export function planBadgeMeta(plan) {
+    if (plan === 'free') return { label: 'Free', variant: 'secondary' };
+    if (plan === 'admin') return { label: 'Admin', variant: 'outline' };
+    const [tier, billing] = String(plan || '').split('_');
+    if (TIER_LABEL[tier]) {
+        return { label: billing ? `${TIER_LABEL[tier]} ${billing}` : TIER_LABEL[tier], variant: 'default' };
+    }
+    return { label: plan || 'Unknown', variant: 'outline' };
+}
 
 export const CATEGORY_META = {
     technical: { label: 'Technical', icon: Wrench },
@@ -45,7 +50,7 @@ export function PriorityBadge({ priority }) {
 }
 
 export function PlanBadge({ plan }) {
-    const m = PLAN_META[plan] || { label: plan || 'Unknown', variant: 'outline' };
+    const m = planBadgeMeta(plan);
     return <Badge variant={m.variant}>{m.label}</Badge>;
 }
 

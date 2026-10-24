@@ -4,6 +4,7 @@ import Navbar from './components/Landing Page/Navbar'
 import HeroPreview from './components/Landing Page/HeroPreview'
 import FeatureBento from './components/Landing Page/FeatureBento'
 import PricingSection from './components/Landing Page/PricingSection'
+import FooterNav from './components/Landing Page/FooterNav'
 import { Brand } from '@/components/ui/brand'
 import { Button, ButtonArrow } from '@/components/ui/button'
 import { Reveal } from '@/components/ui/reveal'
@@ -115,7 +116,7 @@ export default function LandingPage() {
                 <PricingSection />
 
                 {/* Closing call to action */}
-                <section className="px-4 pb-28 pt-8 sm:px-8 md:pb-40">
+                <section className="px-4 pb-20 pt-8 sm:px-8 md:pb-28">
                     <Reveal className="mx-auto max-w-6xl">
                         <div className="bezel">
                             <div className="bezel-core relative overflow-hidden px-7 py-16 text-center sm:px-12 md:py-24">
@@ -155,12 +156,7 @@ export default function LandingPage() {
                             Uptime monitoring for websites and servers.
                         </p>
                     </div>
-                    <nav aria-label="Footer" className="grid grid-cols-2 gap-x-16 gap-y-3 text-sm">
-                        <a href="#features" className="text-muted-foreground transition-colors duration-300 ease-fluid hover:text-foreground">Features</a>
-                        <Link href="/auth" className="text-muted-foreground transition-colors duration-300 ease-fluid hover:text-foreground">Sign in</Link>
-                        <a href="#pricing" className="text-muted-foreground transition-colors duration-300 ease-fluid hover:text-foreground">Pricing</a>
-                        <Link href="/auth?mode=signup" className="text-muted-foreground transition-colors duration-300 ease-fluid hover:text-foreground">Create account</Link>
-                    </nav>
+                    <FooterNav />
                 </div>
                 <p className="mx-auto mt-12 max-w-6xl text-xs text-muted-foreground/80">
                     © {new Date().getFullYear()} Ping Pilott

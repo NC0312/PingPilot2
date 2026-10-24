@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiUrl } from '@/lib/apiConfig';
 
@@ -8,11 +8,66 @@ import { getApiUrl } from '@/lib/apiConfig';
 const AuthContext = createContext({});
 export const useAuth = () => useContext(AuthContext);
 
+// Responses from a proxy or a crashed server may not be JSON; never let that surface as a parse error.
+const readJson = async (response) => {
+    try {
+        return await response.json();
+    } catch {
+        return {};
+    }
+};
+
+const clearTokens = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+};
+
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const router = useRouter();
+
+    // Lets the stable callbacks below read the latest user without being recreated.
+    const userRef = useRef(null);
+    userRef.current = user;
+    const refreshInFlight = useRef(null);
+    // True between an explicit sign-out and the next sign-in, so route guards don't hijack the redirect.
+    const signedOutByUser = useRef(false);
+
+    // Token refresh helper. Concurrent callers share one request, so a rotated refresh token is never spent twice.
+    const refreshToken = useCallback(() => {
+        if (refreshInFlight.current) return refreshInFlight.current;
+
+        const run = async () => {
+            const stored = localStorage.getItem('refreshToken');
+            if (!stored) throw new Error('No refresh token available');
+
+            const response = await fetch(getApiUrl('/api/auth/refresh-token'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken: stored }),
+            });
+
+            const data = await readJson(response);
+            if (!response.ok) {
+                // Only a rejected token ends the session; a server hiccup (5xx) should not sign the user out.
+                if (response.status >= 400 && response.status < 500) clearTokens();
+                throw new Error(data.message || 'Failed to refresh token');
+            }
+
+            localStorage.setItem('token', data.data.token);
+            if (data.data.refreshToken) {
+                localStorage.setItem('refreshToken', data.data.refreshToken);
+            }
+            return data.data;
+        };
+
+        refreshInFlight.current = run().finally(() => {
+            refreshInFlight.current = null;
+        });
+        return refreshInFlight.current;
+    }, []);
 
     // Check for existing token on app load
     useEffect(() => {
@@ -21,7 +76,6 @@ export const AuthProvider = ({ children }) => {
                 const token = localStorage.getItem('token');
 
                 if (!token) {
-                    setLoading(false);
                     return;
                 }
 
@@ -45,12 +99,10 @@ export const AuthProvider = ({ children }) => {
                             const data = await newResponse.json();
                             setUser(data.data.user);
                         } else {
-                            localStorage.removeItem('token');
-                            localStorage.removeItem('refreshToken');
+                            clearTokens();
                         }
                     } catch (err) {
-                        localStorage.removeItem('token');
-                        localStorage.removeItem('refreshToken');
+                        // refreshToken() already cleared the tokens if the server rejected them
                     }
                 }
             } catch (err) {
@@ -61,36 +113,10 @@ export const AuthProvider = ({ children }) => {
         };
 
         checkAuth();
-    }, []);
-
-    // Token refresh helper
-    const refreshToken = async () => {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) throw new Error('No refresh token available');
-
-        const response = await fetch(getApiUrl('/api/auth/refresh-token'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken }),
-        });
-
-        const data = await response.json();
-        if (!response.ok) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('refreshToken');
-            throw new Error(data.message || 'Failed to refresh token');
-        }
-
-        localStorage.setItem('token', data.data.token);
-        if (data.data.refreshToken) {
-            localStorage.setItem('refreshToken', data.data.refreshToken);
-        }
-        return data.data;
-    };
-
+    }, [refreshToken]);
 
     // API request helper with token handling
-    const apiRequest = async (endpoint, options = {}) => {
+    const apiRequest = useCallback(async (endpoint, options = {}) => {
         const token = localStorage.getItem('token');
         const headers = {
             'Content-Type': 'application/json',
@@ -109,21 +135,28 @@ export const AuthProvider = ({ children }) => {
                 headers['Authorization'] = `Bearer ${newToken}`;
                 response = await fetch(getApiUrl(endpoint), { ...options, headers });
             } catch (err) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('refreshToken');
+                clearTokens();
                 setUser(null);
                 router.push('/auth');
                 throw new Error('Session expired. Please login again.');
             }
         }
 
-        const data = await response.json();
+        const data = await readJson(response);
         if (!response.ok) throw new Error(data.message || 'Request failed');
         return data;
-    };
+    }, [refreshToken, router]);
 
-    // Sign up function
-    const signup = async (email, password, name = '') => {
+    // Re-read the signed-in user from the server (e.g. after a plan change).
+    const refreshUser = useCallback(async () => {
+        const data = await apiRequest('/api/auth/me', { method: 'GET' });
+        setUser(data.data.user);
+        return data.data.user;
+    }, [apiRequest]);
+
+    // Sign up function. The API creates an unverified account and returns no session,
+    // so nothing is stored and the user stays signed out until they verify and log in.
+    const signup = useCallback(async (email, password, name = '') => {
         setError(null);
 
         const response = await fetch(getApiUrl('/api/auth/register'), {
@@ -132,17 +165,19 @@ export const AuthProvider = ({ children }) => {
             body: JSON.stringify({ email, password, name }),
         });
 
-        const data = await response.json();
+        const data = await readJson(response);
         if (!response.ok) throw new Error(data.message || 'Registration failed');
 
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('refreshToken', data.data.refreshToken);
-        setUser(data.data.user);
-        return data.data.user;
-    };
+        if (data.data?.token && data.data?.refreshToken) {
+            localStorage.setItem('token', data.data.token);
+            localStorage.setItem('refreshToken', data.data.refreshToken);
+            setUser(data.data.user);
+        }
+        return data.data?.user;
+    }, []);
 
-    // Login function
-    const login = async (email, password) => {
+    // Login function. Navigation after sign-in is left to the caller (it knows where the user was headed).
+    const login = useCallback(async (email, password) => {
         setError(null);
 
         const response = await fetch(getApiUrl('/api/auth/login'), {
@@ -151,7 +186,7 @@ export const AuthProvider = ({ children }) => {
             body: JSON.stringify({ email, password }),
         });
 
-        const data = await response.json();
+        const data = await readJson(response);
         if (!response.ok) {
             if (data.code === 'email_not_verified') {
                 throw new Error('email_not_verified');
@@ -161,60 +196,21 @@ export const AuthProvider = ({ children }) => {
 
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('refreshToken', data.data.refreshToken);
+        signedOutByUser.current = false;
         setUser(data.data.user);
-        router.push('/dashboard');
         return data.data.user;
-    };
+    }, []);
 
     // Logout function
-    const logout = async () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
+    const logout = useCallback(async (redirectTo = '/auth') => {
+        signedOutByUser.current = true;
+        clearTokens();
         setUser(null);
-        router.push('/auth');
-    };
-
-    // Login without verification (for resending verification email)
-    const loginWithoutVerification = async (email, password) => {
-        setError(null);
-
-        try {
-            // Try to login but catch email_not_verified error
-            const response = await fetch(getApiUrl('/api/auth/login'), {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ email, password }),
-            });
-
-            const data = await response.json();
-
-            // If it's the email_not_verified error, we can proceed
-            if (!response.ok) {
-                if (data.code === 'email_not_verified' && data.data?.user) {
-                    // Set the user without saving the token
-                    setUser(data.data.user);
-                    return data.data.user;
-                }
-
-                throw new Error(data.message || 'Authentication failed');
-            }
-
-            // If we get here, the login succeeded normally
-            localStorage.setItem('token', data.data.token);
-            localStorage.setItem('refreshToken', data.data.refreshToken);
-
-            setUser(data.data.user);
-            return data.data.user;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        }
-    };
+        router.push(redirectTo);
+    }, [router]);
 
     // Request password reset (forgot password)
-    const resetPassword = async (email) => {
+    const resetPassword = useCallback(async (email) => {
         setError(null);
 
         try {
@@ -226,7 +222,7 @@ export const AuthProvider = ({ children }) => {
                 body: JSON.stringify({ email }),
             });
 
-            const data = await response.json();
+            const data = await readJson(response);
 
             if (!response.ok) {
                 throw new Error(data.message || 'Failed to initiate password reset');
@@ -237,10 +233,10 @@ export const AuthProvider = ({ children }) => {
             setError(err.message);
             throw err;
         }
-    };
+    }, []);
 
     // Complete password reset with token
-    const completePasswordReset = async (token, userId, password) => {
+    const completePasswordReset = useCallback(async (token, userId, password) => {
         setError(null);
 
         try {
@@ -252,7 +248,7 @@ export const AuthProvider = ({ children }) => {
                 body: JSON.stringify({ token, userId, password }),
             });
 
-            const data = await response.json();
+            const data = await readJson(response);
 
             if (!response.ok) {
                 throw new Error(data.message || 'Failed to reset password');
@@ -263,7 +259,7 @@ export const AuthProvider = ({ children }) => {
             setError(err.message);
             throw err;
         }
-    };
+    }, []);
 
     // Update user profile
     const updateUserProfile = async (userData) => {
@@ -308,13 +304,15 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // Request email verification resend
-    const resendVerificationEmail = async () => {
+    // Request email verification resend. The endpoint only needs an email address, so this works
+    // for signed-out users too: pass the address they typed, or it falls back to the signed-in user's.
+    const resendVerificationEmail = useCallback(async (email) => {
         setError(null);
 
         try {
-            if (!user) {
-                throw new Error('No authenticated user');
+            const target = email || userRef.current?.email;
+            if (!target) {
+                throw new Error('No email address to send to');
             }
 
             const response = await fetch(getApiUrl('/api/auth/resend-verification'), {
@@ -322,10 +320,10 @@ export const AuthProvider = ({ children }) => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ email: user.email }),
+                body: JSON.stringify({ email: target }),
             });
 
-            const data = await response.json();
+            const data = await readJson(response);
 
             if (!response.ok) {
                 throw new Error(data.message || 'Failed to resend verification email');
@@ -336,15 +334,14 @@ export const AuthProvider = ({ children }) => {
             setError(err.message);
             throw err;
         }
-    };
+    }, []);
 
     // Verify email with token
-    const verifyEmail = async (token, userId) => {
-        setError(null);
-
+    const verifyEmail = useCallback(async (token, userId) => {
         try {
             // Properly append query parameters to the URL
-            const url = new URL(getApiUrl('/api/auth/verify-email'));
+            const base = getApiUrl('/api/auth/verify-email');
+            const url = new URL(base, window.location.origin);
             url.searchParams.append('token', token);
             url.searchParams.append('userId', userId);
 
@@ -355,26 +352,25 @@ export const AuthProvider = ({ children }) => {
                 }
             });
 
-            const data = await response.json();
+            const data = await readJson(response);
 
             if (!response.ok) {
                 throw new Error(data.message || 'Failed to verify email');
             }
 
             // Update user state if this is the current user
-            if (user && user.id === userId) {
-                setUser({
-                    ...user,
-                    emailVerified: true
-                });
+            const current = userRef.current;
+            if (current && current.id === userId) {
+                setUser({ ...current, emailVerified: true });
             }
 
             return true;
         } catch (err) {
-            setError(err.message);
+            // Deliberately not stored in context state: updating state here re-renders every consumer,
+            // and the page already shows its own message.
             throw err;
         }
-    };
+    }, []);
 
     // Check if email needs verification
     const checkEmailVerification = () => {
@@ -443,7 +439,6 @@ export const AuthProvider = ({ children }) => {
     // Initial admin setup (first admin setup)
     const setupInitialAdmin = async (email, password, displayName, setupToken) => {
         setError(null);
-        setLoading(true);
 
         try {
             const response = await fetch(getApiUrl('/api/admin/initial-setup'), {
@@ -459,7 +454,7 @@ export const AuthProvider = ({ children }) => {
                 }),
             });
 
-            const data = await response.json();
+            const data = await readJson(response);
 
             if (!response.ok) {
                 throw new Error(data.message || 'Initial admin setup failed');
@@ -478,8 +473,6 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
             setError(err.message);
             throw err;
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -527,35 +520,40 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    const value = {
+        user,
+        loading,
+        error,
+        signup,
+        login,
+        logout,
+        resetPassword,
+        completePasswordReset,
+        getCurrentUser: () => user,
+        updateUserProfile,
+        changePassword,
+        isAuthenticated: () => !!user,
+        verifyEmail,
+        resendVerificationEmail,
+        checkEmailVerification,
+        hasRole,
+        isAdmin,
+        updateUserRole,
+        apiRequest, // Expose apiRequest for other components to use
+        refreshUser,
+        hasSignedOut: () => signedOutByUser.current,
+        // New admin management functions
+        makeAdmin,
+        setupInitialAdmin,
+        getAdminList,
+        revokeAdmin
+    };
+
+    // Children always render: each protected area shows its own skeleton while `loading` is true,
+    // so public pages (landing, auth) are server-rendered instead of replaced by a bare "Loading...".
     return (
-        <AuthContext.Provider value={{
-            user,
-            loading,
-            error,
-            signup,
-            login,
-            logout,
-            resetPassword,
-            completePasswordReset,
-            getCurrentUser: () => user,
-            updateUserProfile,
-            changePassword,
-            isAuthenticated: () => !!user,
-            verifyEmail,
-            resendVerificationEmail,
-            checkEmailVerification,
-            loginWithoutVerification,
-            hasRole,
-            isAdmin,
-            updateUserRole,
-            apiRequest, // Expose apiRequest for other components to use
-            // New admin management functions
-            makeAdmin,
-            setupInitialAdmin,
-            getAdminList,
-            revokeAdmin
-        }}>
-            {!loading ? children : <div>Loading...</div>}
+        <AuthContext.Provider value={value}>
+            {children}
         </AuthContext.Provider>
     );
 };
