@@ -67,7 +67,7 @@ function AuthForm() {
 
     // Redirect once signed in (covers both a fresh login and visiting this page while already signed in)
     useEffect(() => {
-        if (user && user.emailVerified) {
+        if (user) {
             try { localStorage.removeItem('pp.afterAuth'); } catch { /* ignore */ }
             router.replace(nextPath);
         }
