@@ -166,7 +166,9 @@ function AuthForm() {
         setResendError(null);
 
         try {
-            await signup(data.email, data.password, data.name);
+            const created = await signup(data.email, data.password, data.name);
+            // When the server doesn't ask for email verification it signs the new user in, and the effect above redirects
+            if (created?.emailVerified) return;
             setUnverifiedEmail(data.email);
             setSuccessMessage('Account created. Check your email to verify your account.');
         } catch (error) {
