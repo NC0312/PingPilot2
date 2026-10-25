@@ -9,6 +9,7 @@ const NAV_LINKS = [
     { label: 'Features', href: '/#features' },
     { label: 'How it works', href: '/#how' },
     { label: 'Pricing', href: '/pricing' },
+    { label: 'Android app', href: '/android-app' },
 ]
 
 const Navbar = () => {

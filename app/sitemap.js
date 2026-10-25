@@ -6,6 +6,7 @@ const PAGES = [
     { path: '/website-uptime-monitoring', priority: 0.9, changeFrequency: 'monthly' },
     { path: '/server-monitoring', priority: 0.9, changeFrequency: 'monthly' },
     { path: '/pricing', priority: 0.8, changeFrequency: 'monthly' },
+    { path: '/android-app', priority: 0.7, changeFrequency: 'monthly' },
     { path: '/alternatives/uptimerobot', priority: 0.7, changeFrequency: 'monthly' },
     { path: '/alternatives/pingdom', priority: 0.7, changeFrequency: 'monthly' },
     { path: '/blog', priority: 0.6, changeFrequency: 'weekly' },

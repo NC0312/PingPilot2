@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { DeviceMobile, DownloadSimple, X } from '@phosphor-icons/react';
 import { QRCodeSVG } from 'qrcode.react';
-import { getApiUrl } from '@/lib/apiConfig';
-import { DISMISS_KEY, isDismissed, parseAppVersion } from '@/lib/app-version';
+import Link from 'next/link';
+import { DISMISS_KEY, isDismissed } from '@/lib/app-version';
+import { useAppDownload } from '@/app/components/useAppDownload';
 import { Button } from '@/components/ui/button';
 import { Reveal } from '@/components/ui/reveal';
 
@@ -16,46 +17,34 @@ const STEPS = [
 
 /**
  * "Get alerts on your phone": the download for the Android app, with a QR code so a desktop visitor can send it to
- * their phone. It asks the backend where the current build lives, and shows nothing at all when no build is published
- * or the request fails, so it can never be a broken box on the dashboard.
+ * their phone. It sits at the top of the dashboard until it is dismissed, and comes back when a newer build is
+ * published. The download link comes from the backend, with the permanent releases link as a fallback.
  */
 export default function MobileAppCard() {
-  const [info, setInfo] = useState(null);
+  const app = useAppDownload();
+  // Starts hidden: show it only after we know the version and have checked whether this build was dismissed
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(getApiUrl('/api/app/version'), { headers: { Accept: 'application/json' } });
-        if (!res.ok) return;
-        const parsed = parseAppVersion(await res.json());
-        if (!parsed || cancelled) return;
+    if (!app.ready) return;
+    let stored = null;
+    try {
+      stored = window.localStorage.getItem(DISMISS_KEY);
+    } catch {
+      // storage blocked: just show the card
+    }
+    setVisible(!isDismissed(stored, app.code));
+  }, [app.ready, app.code]);
 
-        let stored = null;
-        try {
-          stored = window.localStorage.getItem(DISMISS_KEY);
-        } catch {
-          // storage blocked: just show the card
-        }
-        if (!isDismissed(stored, parsed.code)) setInfo(parsed);
-      } catch {
-        // offline or an older backend without the endpoint: no card
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!info) return null;
+  if (!visible) return null;
 
   const dismiss = () => {
     try {
-      window.localStorage.setItem(DISMISS_KEY, String(info.code ?? 'none'));
+      window.localStorage.setItem(DISMISS_KEY, String(app.code ?? 'none'));
     } catch {
       // not remembered, but it still goes away for now
     }
-    setInfo(null);
+    setVisible(false);
   };
 
   return (
@@ -72,12 +61,12 @@ export default function MobileAppCard() {
           </button>
 
           <div className="space-y-5">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pr-10">
               <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white/[0.05] text-primary ring-1 ring-white/10">
                 <DeviceMobile weight="light" className="size-5" />
               </span>
               <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-                Android app{info.name ? ` · version ${info.name}` : ''}
+                New · Android app{app.name ? ` · version ${app.name}` : ''}
               </span>
             </div>
 
@@ -87,7 +76,7 @@ export default function MobileAppCard() {
               </h2>
               <p className="max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
                 A notification the moment one of your servers goes down, comes back, or slows down, even when the app is closed.
-                {info.notes ? ` ${info.notes}` : ''}
+                {app.notes ? ` ${app.notes}` : ''}
               </p>
             </div>
 
@@ -102,19 +91,21 @@ export default function MobileAppCard() {
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <Button asChild size="lg">
-                <a href={info.url} download="Ping-Pilott.apk" rel="noopener">
+                <a href={app.url} download="Ping-Pilott.apk" rel="noopener">
                   <DownloadSimple weight="light" />
                   Download for Android
                 </a>
               </Button>
-              <p className="text-xs text-muted-foreground">Installed directly, not from Google Play.</p>
+              <Link href="/android-app" className="text-sm text-primary underline-offset-4 hover:underline">
+                More about the app
+              </Link>
             </div>
           </div>
 
           {/* A phone has no use for a code to scan on itself */}
           <div className="hidden text-center md:block">
             <div className="inline-block rounded-2xl bg-white p-3">
-              <QRCodeSVG value={info.url} size={132} marginSize={0} title="QR code for the Android app download" />
+              <QRCodeSVG value={app.url} size={132} marginSize={0} title="QR code for the Android app download" />
             </div>
             <p className="mt-3 text-xs text-muted-foreground">Scan to download on your phone</p>
           </div>

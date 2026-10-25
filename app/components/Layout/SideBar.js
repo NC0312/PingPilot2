@@ -20,9 +20,11 @@ import {
     Plus,
     UserCircle,
     Siren,
+    DeviceMobile,
 } from '@phosphor-icons/react';
 import { Brand } from '@/components/ui/brand';
 import { Button } from '@/components/ui/button';
+import { SEEN_KEY } from '@/lib/app-version';
 
 // One destination per row. `match` decides the active state so nested routes keep their parent lit.
 const MONITOR_ITEMS = [
@@ -32,9 +34,12 @@ const MONITOR_ITEMS = [
 ];
 // Everything about you rather than your servers. Admins have no plan to manage, so theirs is shorter.
 const ACCOUNT_ITEM = { name: 'Account', icon: UserCircle, href: '/account' };
+// The Android app. `badge` shows a "New" marker until the person has clicked it once.
+const APP_ITEM = { name: 'Android app', icon: DeviceMobile, href: '/android-app', badge: 'New' };
 const USER_ITEMS = [
     { name: 'Plan & billing', icon: CreditCard, href: '/subscription' },
     ACCOUNT_ITEM,
+    APP_ITEM,
     { name: 'Support', icon: ChatCircleDots, href: '/support/tickets' },
 ];
 const ADMIN_ITEMS = [
@@ -52,10 +57,34 @@ function NavItem({ item, collapsed, onNavigate }) {
     const active = isActive(pathname, item);
     const Icon = item.icon;
 
+    // "New" marker: shown until this item has been clicked once in this browser. It starts hidden and is revealed after
+    // mount, so there is no flash for people who have already seen it and nothing mismatched on first render.
+    const [showBadge, setShowBadge] = useState(false);
+    useEffect(() => {
+        if (!item.badge) return;
+        try {
+            setShowBadge(window.localStorage.getItem(SEEN_KEY) !== '1');
+        } catch {
+            setShowBadge(true);
+        }
+    }, [item.badge]);
+
+    const handleClick = () => {
+        if (item.badge) {
+            try {
+                window.localStorage.setItem(SEEN_KEY, '1');
+            } catch {
+                // not remembered; the marker goes away for now
+            }
+            setShowBadge(false);
+        }
+        onNavigate?.();
+    };
+
     return (
         <Link
             href={item.href}
-            onClick={onNavigate}
+            onClick={handleClick}
             aria-current={active ? 'page' : undefined}
             title={collapsed ? item.name : undefined}
             className={`group relative flex h-11 items-center gap-3 rounded-full text-sm transition-[background-color,color] duration-500 ease-fluid ${collapsed ? 'w-11 justify-center' : 'px-3.5'} ${active
@@ -65,6 +94,11 @@ function NavItem({ item, collapsed, onNavigate }) {
         >
             <Icon weight={active ? 'regular' : 'light'} className={`size-[22px] shrink-0 transition-colors duration-500 ease-fluid ${active ? 'text-primary' : ''}`} />
             <span className={collapsed ? 'sr-only' : 'truncate'}>{item.name}</span>
+            {showBadge && !collapsed && (
+                <span className="ml-auto rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary">{item.badge}</span>
+            )}
+            {showBadge && collapsed && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary" aria-hidden="true" />}
+            {showBadge && <span className="sr-only">, {item.badge}</span>}
             {collapsed && (
                 <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-full bg-popover px-3 py-1.5 text-xs font-medium text-foreground opacity-0 shadow-[0_0_0_1px_oklch(1_0_0/0.08),0_12px_24px_-12px_oklch(0_0_0/0.6)] transition-[opacity,transform] duration-300 ease-fluid group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100" style={{ zIndex: 'var(--z-overlay)' }} aria-hidden="true">
                     {item.name}
@@ -180,7 +214,7 @@ const SideBar = ({ collapsed = false, onToggle }) => {
     const groups = [
         { label: 'Monitor', items: MONITOR_ITEMS },
         ...(isAdminUser ? [{ label: 'Admin', items: ADMIN_ITEMS }] : []),
-        { label: 'Manage', items: isAdminUser ? [ACCOUNT_ITEM] : USER_ITEMS },
+        { label: 'Manage', items: isAdminUser ? [ACCOUNT_ITEM, APP_ITEM] : USER_ITEMS },
     ];
 
     const renderGroups = (isCollapsed, onNavigate) =>

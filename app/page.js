@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowDown } from '@phosphor-icons/react/dist/ssr'
+import { ArrowDown, DeviceMobile } from '@phosphor-icons/react/dist/ssr'
 import Navbar from './components/Landing Page/Navbar'
 import HeroPreview from './components/Landing Page/HeroPreview'
 import FeatureBento from './components/Landing Page/FeatureBento'
@@ -90,6 +90,15 @@ export default function LandingPage() {
                             </Reveal>
                             <Reveal delay={300}>
                                 <p className="text-[13px] text-muted-foreground">Free 2-day trial. One URL, checked every 5 minutes.</p>
+                            </Reveal>
+                            <Reveal delay={360}>
+                                <Link
+                                    href="/android-app"
+                                    className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3.5 py-1.5 text-[13px] text-muted-foreground ring-1 ring-white/10 transition-colors duration-300 ease-fluid hover:bg-white/[0.07] hover:text-foreground"
+                                >
+                                    <DeviceMobile weight="light" className="size-4 text-primary" />
+                                    New: the Android app sends alerts to your phone
+                                </Link>
                             </Reveal>
                         </div>
 

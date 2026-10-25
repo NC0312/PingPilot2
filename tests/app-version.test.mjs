@@ -2,7 +2,7 @@
 // The dashboard's Android download card: what it accepts from the backend and when it stays hidden.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isDismissed, parseAppVersion } from '../lib/app-version.js';
+import { FALLBACK_DOWNLOAD, isDismissed, parseAppVersion, resolveAppDownload } from '../lib/app-version.js';
 
 const ok = (data) => ({ status: 'success', data });
 const URL = 'https://github.com/Jatin-1111/ping-pilott-releases/releases/latest/download/Ping-Pilott.apk';
@@ -41,4 +41,20 @@ test('dismissing hides the card for that build only', () => {
     assert.equal(isDismissed(null, 2), false);
     assert.equal(isDismissed(undefined, 2), false);
     assert.equal(isDismissed('none', null), true);
+});
+
+test('with nothing published the app is still offered, from the permanent releases link', () => {
+    for (const body of [null, {}, ok({}), ok({ latestVersionCode: 2 }), ok({ downloadUrl: 'http://insecure.example/a.apk' })]) {
+        assert.equal(resolveAppDownload(body), FALLBACK_DOWNLOAD);
+    }
+});
+
+test('the fallback is an https link to the file named Ping-Pilott.apk, and cannot be changed by accident', () => {
+    assert.match(FALLBACK_DOWNLOAD.url, /^https:\/\/github\.com\/Jatin-1111\/ping-pilott-releases\/releases\/latest\/download\/Ping-Pilott\.apk$/);
+    assert.equal(Object.isFrozen(FALLBACK_DOWNLOAD), true);
+});
+
+test('a published build wins over the fallback', () => {
+    const published = resolveAppDownload(ok({ downloadUrl: URL, latestVersionName: '1.2.0', latestVersionCode: 3 }));
+    assert.deepEqual(published, { url: URL, name: '1.2.0', code: 3, notes: null });
 });

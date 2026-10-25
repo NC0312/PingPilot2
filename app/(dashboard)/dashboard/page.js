@@ -220,6 +220,9 @@ export default function DashboardPage() {
         }
       />
 
+      {/* The Android app, front and centre until dismissed; it comes back when a newer build is published */}
+      <MobileAppCard />
+
       <TrialNotice servers={servers} />
 
       {error && (
@@ -398,9 +401,6 @@ export default function DashboardPage() {
           </section>
         </>
       )}
-
-      {/* The Android app download. Shows nothing until the backend publishes a build, and can be dismissed. */}
-      <MobileAppCard />
     </PageContainer>
   );
 }
