@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --test \"tests/*.test.mjs\""
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -26,6 +27,7 @@
     "node-cron": "^4.0.5",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.3",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-hook-form": "^7.56.3",

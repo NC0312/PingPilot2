@@ -15,6 +15,7 @@ import {
 import { useAuth } from '@/app/context/AuthContext';
 import { PageContainer } from '@/app/components/Layout/AppShell';
 import TrialNotice from '@/app/components/TrialNotice';
+import MobileAppCard from '@/app/components/MobileAppCard';
 import { getPlanLimits } from '@/app/components/subscriptionPlans';
 import { planLabel } from '@/app/components/planCatalog';
 import { Button, ButtonArrow } from '@/components/ui/button';
@@ -397,6 +398,9 @@ export default function DashboardPage() {
           </section>
         </>
       )}
+
+      {/* The Android app download. Shows nothing until the backend publishes a build, and can be dismissed. */}
+      <MobileAppCard />
     </PageContainer>
   );
 }
