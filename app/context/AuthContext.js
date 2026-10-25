@@ -17,9 +17,25 @@ const readJson = async (response) => {
     }
 };
 
+// The signed-in user is kept for a few minutes so a reload does not have to ask the server who is signed in.
+// It only drives what the page shows: the token still decides what the API allows. After the window the user is
+// re-read in the background, so a changed plan or role shows up without blocking the page.
+const USER_CACHE_KEY = 'user';
+const USER_CACHE_MS = 5 * 60 * 1000;
+
+const readCachedUser = () => {
+    try {
+        const cached = JSON.parse(localStorage.getItem(USER_CACHE_KEY));
+        return cached?.user && typeof cached.at === 'number' ? cached : null;
+    } catch {
+        return null;
+    }
+};
+
 const clearTokens = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem(USER_CACHE_KEY);
 };
 
 export const AuthProvider = ({ children }) => {
@@ -36,6 +52,8 @@ export const AuthProvider = ({ children }) => {
     const userRef = useRef(null);
     userRef.current = user;
     const refreshInFlight = useRef(null);
+    // The user object that came out of the saved copy: writing it back would restart its five minutes
+    const restoredUser = useRef(null);
     // True between an explicit sign-out and the next sign-in, so route guards don't hijack the redirect.
     const signedOutByUser = useRef(false);
 
@@ -73,8 +91,30 @@ export const AuthProvider = ({ children }) => {
         return refreshInFlight.current;
     }, []);
 
+    // Ask the server who is signed in. Refreshes an expired token once; ends the session if that fails.
+    const fetchCurrentUser = useCallback(async () => {
+        const me = (token) => fetch(getApiUrl('/api/auth/me'), { headers: { 'Authorization': `Bearer ${token}` } });
+
+        let response = await me(localStorage.getItem('token'));
+        if (!response.ok) {
+            try {
+                await refreshToken();
+            } catch {
+                // refreshToken() already cleared the tokens if the server rejected them
+                return null;
+            }
+            response = await me(localStorage.getItem('token'));
+            if (!response.ok) {
+                clearTokens();
+                return null;
+            }
+        }
+        return (await response.json()).data.user;
+    }, [refreshToken]);
+
     // Check for existing token on app load
     useEffect(() => {
+        let cancelled = false;
         const checkAuth = async () => {
             try {
                 const token = localStorage.getItem('token');
@@ -84,41 +124,43 @@ export const AuthProvider = ({ children }) => {
                     return;
                 }
 
-                const response = await fetch(getApiUrl('/api/auth/me'), {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setUser(data.data.user);
-                } else {
-                    // Try refreshing token
-                    try {
-                        await refreshToken();
-                        const newToken = localStorage.getItem('token');
-                        const newResponse = await fetch(getApiUrl('/api/auth/me'), {
-                            headers: { 'Authorization': `Bearer ${newToken}` }
-                        });
-
-                        if (newResponse.ok) {
-                            const data = await newResponse.json();
-                            setUser(data.data.user);
-                        } else {
-                            clearTokens();
-                        }
-                    } catch (err) {
-                        // refreshToken() already cleared the tokens if the server rejected them
-                    }
+                // A recent copy of the user: show it now and skip the request
+                const cached = readCachedUser();
+                if (cached) {
+                    restoredUser.current = cached.user;
+                    setUser(cached.user);
+                    setLoading(false);
+                    if (Date.now() - cached.at < USER_CACHE_MS) return;
                 }
+
+                const fresh = await fetchCurrentUser();
+                if (cancelled) return;
+                // A failed check ends the session (tokens cleared) only when we have no user to fall back on
+                // after a network error; an explicit rejection comes back as null with the tokens already gone.
+                if (fresh) setUser(fresh);
+                else if (!localStorage.getItem('token')) setUser(null);
             } catch (err) {
                 console.error('Auth check error:', err);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
 
         checkAuth();
-    }, [refreshToken]);
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchCurrentUser]);
+
+    // Keep the saved copy of the user in step with every change (sign-in, profile edit, plan change...)
+    useEffect(() => {
+        if (!user || user === restoredUser.current) return;
+        try {
+            localStorage.setItem(USER_CACHE_KEY, JSON.stringify({ user, at: Date.now() }));
+        } catch {
+            // storage full or blocked: the copy is only a shortcut
+        }
+    }, [user]);
 
     // API request helper with token handling
     const apiRequest = useCallback(async (endpoint, options = {}) => {
