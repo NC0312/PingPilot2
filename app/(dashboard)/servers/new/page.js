@@ -21,7 +21,7 @@ import { countServers } from '@/lib/servers';
 
 const slots = (n) => `${n} ${n === 1 ? 'server' : 'servers'}`;
 
-// Plan, slots and what the free trial means: the context the user needs while filling in the form.
+// Plan and slots: the context the user needs while filling in the form.
 function PlanPanel({ plan, isAdmin, serverCount, maxServers }) {
     const limited = !isAdmin && Number.isFinite(maxServers);
     const pct = limited ? Math.min(100, Math.round((serverCount / maxServers) * 100)) : 0;
@@ -56,12 +56,6 @@ function PlanPanel({ plan, isAdmin, serverCount, maxServers }) {
                         </div>
                     )}
                 </div>
-
-                {!isAdmin && plan === 'free' && (
-                    <p className="text-[13px] leading-relaxed text-muted-foreground">
-                        Each server gets a 2-day free trial. After that it stops being checked unless you move to a paid plan.
-                    </p>
-                )}
 
                 <Link href="/subscription" className="inline-flex min-h-11 items-center text-sm text-primary underline-offset-4 hover:underline">
                     Compare plans
@@ -187,9 +181,9 @@ export default function NewServerPage() {
                         }
                     ],
                     alerts: {
-                        enabled: monitoringFormData.alertPreferences?.email || monitoringFormData.alertPreferences?.phone || false,
+                        enabled: monitoringFormData.alertPreferences?.email || false,
                         email: monitoringFormData.alertPreferences?.email || false,
-                        phone: monitoringFormData.alertPreferences?.phone || false,
+                        phone: false, // phone-call alerts were removed; the field stays so the API payload shape is unchanged
                         webhookUrl: monitoringFormData.webhookUrl || '',
                         responseThreshold: monitoringFormData.responseThreshold || 1000,
                         timeWindow: {
@@ -199,7 +193,7 @@ export default function NewServerPage() {
                     }
                 },
                 contactEmails: monitoringFormData.emails || [],
-                contactPhones: monitoringFormData.phones || [],
+                contactPhones: [],
             };
 
             const response = await apiRequest('/api/servers', {
@@ -365,7 +359,7 @@ export default function NewServerPage() {
                                     <div className="bezel-sm-core flex flex-col items-center px-6 py-14 text-center">
                                         <Lock weight="light" className="size-10 text-muted-foreground" />
                                         <h2 className="mt-5 font-display text-2xl font-medium tracking-tight">
-                                            {userPlan === 'free' ? 'The free trial includes' : 'Your plan includes'} {slots(maxServers)}
+                                            {userPlan === 'free' ? 'The free plan includes' : 'Your plan includes'} {slots(maxServers)}
                                         </h2>
                                         <p className="mt-2 max-w-[44ch] text-sm leading-relaxed text-muted-foreground">
                                             You’re using {serverCount === 1 ? 'it' : `all ${serverCount}`}. Move to a bigger plan to monitor more, or remove one you no longer need.

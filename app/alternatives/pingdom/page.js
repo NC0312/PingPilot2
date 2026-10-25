@@ -13,10 +13,10 @@ export const metadata = {
 
 const ROWS = [
     ['Focus', 'Uptime, response time and incident history', 'Synthetic monitoring plus real user monitoring (RUM)'],
-    ['Free option', '2-day trial, 1 URL, 5-minute checks', 'Free trial; no free plan listed'],
+    ['Free option', 'Free forever: 5 URLs, 5-minute checks', 'Free trial; no free plan listed'],
     ['Pricing shown', '$10, $29 and $79 per month, public', 'Listed as "starting at" prices by tier'],
-    ['Smallest paid tier', 'Starter: 10 URLs', 'Synthetics from 10 uptime monitors'],
-    ['Check intervals', '5, 3 or 1 minute by plan', 'See Pingdom pricing page'],
+    ['Smallest paid tier', 'Starter: 20 URLs', 'Synthetics from 10 uptime monitors'],
+    ['Check intervals', '5 minutes free, 1 minute on paid plans', 'See Pingdom pricing page'],
     ['Real user monitoring', 'No', 'Yes, priced by pageviews'],
     ['Monitor types', 'Website, API, TCP port, database', 'Synthetic monitoring (see Pingdom docs)'],
 ]
@@ -24,7 +24,7 @@ const ROWS = [
 const FAQS = [
     { q: 'Is Ping Pilott a replacement for Pingdom?', a: 'For basic uptime and response-time monitoring, yes. Ping Pilott does not offer real user monitoring or transaction scripts, so teams that rely on those should stay with a larger platform.' },
     { q: 'How does Ping Pilott pricing compare to Pingdom?', a: 'Ping Pilott publishes three flat monthly prices, $10, $29 and $79, based on the number of URLs. Pingdom shows starting prices by tier on its site, so check its pricing page for the current figure for your size.' },
-    { q: 'Can I try Ping Pilott without paying?', a: 'Yes. The free trial lasts 2 days and covers one URL checked every 5 minutes.' },
+    { q: 'Can I try Ping Pilott without paying?', a: 'Yes. The free plan never expires and covers 5 URLs checked every 5 minutes.' },
 ]
 
 export default function Page() {

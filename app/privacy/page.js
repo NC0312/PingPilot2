@@ -24,7 +24,7 @@ const SECTIONS = [
             { list: [
                 'Name, email address and password: to create and secure your account, verify your email, sign you in and contact you about the service. Your password is treated as sensitive personal data.',
                 'Monitor settings (the websites, APIs, hosts and ports you ask us to check, intervals and alert preferences): to perform the checks you request.',
-                'Alert contacts (email addresses, phone numbers and webhook URLs you add): to send alerts to the people you choose. If these belong to other people, you confirm they are aware and agree.',
+                'Alert contacts (email addresses and webhook URLs you add): to send alerts to the people you choose. If these belong to other people, you confirm they are aware and agree.',
                 'Check results and incident history (status, response time, start and end of outages): to show your dashboard and reports.',
                 'Support messages and the details you include: to answer your request.',
                 'Technical data in standard server logs, such as IP address, browser type and pages requested: to run, secure and fix the service.',

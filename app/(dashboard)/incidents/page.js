@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Reveal } from '@/components/ui/reveal';
+import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
 import { displayUrl, formatSpan, timeAgo } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
@@ -312,7 +313,8 @@ export default function IncidentsPage() {
                         </Link>
                         {inc.serverUrl && <span className="ml-2 font-mono text-xs text-muted-foreground">{displayUrl(inc.serverUrl)}</span>}
                       </p>
-                      {inc.error && <p className="mt-1.5 break-words font-mono text-xs text-muted-foreground">{inc.error}</p>}
+                      <DiagnosisNote diagnosis={inc.diagnosis} className="mt-3" />
+                      {inc.error && <p className={`break-words font-mono text-xs text-muted-foreground ${inc.diagnosis ? 'mt-3' : 'mt-1.5'}`}>{inc.error}</p>}
                     </div>
                     <div className="basis-full pl-6 text-left text-[13px] sm:shrink-0 sm:basis-auto sm:pl-0 sm:text-right">
                       <p className="tabular-nums">{formatTimestamp(inc.startedAt, null, 'D MMM, HH:mm')}</p>

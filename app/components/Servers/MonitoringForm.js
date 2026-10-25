@@ -5,7 +5,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
     EnvelopeSimple,
-    Phone,
     WebhooksLogo,
     X,
     Plus,
@@ -22,7 +21,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
-import { formatPhone } from '@/lib/time';
 
 const selectClass =
     'h-11 w-full min-w-0 rounded-xl bg-white/[0.035] px-3 text-sm text-foreground ring-1 ring-white/10 outline-none transition-[box-shadow,background-color] duration-300 ease-fluid hover:ring-white/20 focus-visible:ring-2 focus-visible:ring-ring [&>option]:bg-popover [&>option]:text-popover-foreground';
@@ -492,29 +490,6 @@ export const EmailListManager = ({ emails, onAdd, onRemove, onPendingChange, fla
     />
 );
 
-export const PhoneListManager = ({ phones, onAdd, onRemove, onPendingChange, flagged }) => (
-    <ContactListManager
-        id="alert-phone"
-        label="Numbers to call"
-        icon={Phone}
-        items={phones}
-        onAdd={onAdd}
-        onRemove={onRemove}
-        onPendingChange={onPendingChange}
-        flagged={flagged}
-        format={formatPhone}
-        inputProps={{ type: 'tel', inputMode: 'tel', placeholder: 'Mobile number', autoComplete: 'off' }}
-        validate={(raw, existing) => {
-            // Accept "+91 98765 43210" and "(555) 123-4567" alike: keep the digits only.
-            const cleaned = raw.replace(/\D/g, '');
-            if (!cleaned) return { error: 'Enter a phone number.' };
-            if (cleaned.length < 10 || cleaned.length > 15) return { error: 'Enter a valid number of 10 to 15 digits.' };
-            if (existing.includes(cleaned)) return { error: 'That number is already on the list.' };
-            return { value: cleaned };
-        }}
-    />
-);
-
 export const WebhookInputManager = ({ webhookUrl, onChange, disabled, onValidityChange }) => {
     const [url, setUrl] = useState(webhookUrl || '');
     const [error, setError] = useState('');
@@ -733,11 +708,10 @@ function SetupSummary({ data, issues, className }) {
     const noDays = data.monitoringDays.length === 0;
     const perDay = noDays ? 0 : Math.floor(totalMinutes(checkSegs) / data.checkFrequency);
     const hasWebhook = !!data.webhookUrl;
-    const alertsOn = (data.alertPreferences.email && data.emails.length > 0) || hasWebhook; // calls aren't sent yet
+    const alertsOn = (data.alertPreferences.email && data.emails.length > 0) || hasWebhook;
 
     const channels = [];
     if (data.alertPreferences.email) channels.push(data.emails.length ? `Email, ${data.emails.length}` : 'Email, no address');
-    if (data.alertPreferences.phone) channels.push(data.phones.length ? `Call, ${data.phones.length}` : 'Call, no number');
     if (hasWebhook) channels.push('Webhook');
 
     return (
@@ -798,7 +772,6 @@ function SetupSummary({ data, issues, className }) {
 export const getDefaultMonitoring = (user) => ({
     alertPreferences: {
         email: true,
-        phone: false,
     },
     monitoringDays: [0, 1, 2, 3, 4, 5, 6],
     alertTimeRange: {
@@ -813,7 +786,6 @@ export const getDefaultMonitoring = (user) => ({
     responseThreshold: 1000, // ms
     webhookUrl: '',
     emails: user?.email ? [user.email] : [],
-    phones: [],
 });
 
 export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabel = 'Update settings', loadingLabel = 'Saving', onBack, backLabel = 'Back', onDirtyChange, savedKey }) => {
@@ -844,13 +816,13 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabe
         const tier = (currentPlan || 'free').split('_')[0];
         switch (tier) {
             case 'starter':
-                return 'Pro and Business plans allow 1-minute checks.';
+                return null;
             case 'pro':
             case 'business':
             case 'admin':
                 return null;
             default: // free
-                return 'Paid plans allow more frequent checks and longer monitoring.';
+                return 'Paid plans allow 1-minute checks.';
         }
     };
 
@@ -898,17 +870,8 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabe
         setFormData((prev) => ({ ...prev, emails: prev.emails.filter((e) => e !== email) }));
     };
 
-    const addPhone = (phone) => {
-        setFormData((prev) => ({ ...prev, phones: [...prev.phones, phone] }));
-    };
-
-    const removePhone = (phone) => {
-        setFormData((prev) => ({ ...prev, phones: prev.phones.filter((p) => p !== phone) }));
-    };
-
     // What has been typed into the contact boxes but not added with "+" or Enter yet.
     const [pendingEmail, setPendingEmail] = useState('');
-    const [pendingPhone, setPendingPhone] = useState('');
     const [webhookValid, setWebhookValid] = useState(true);
     const [formError, setFormError] = useState(null);
     const formErrorRef = useRef(null);
@@ -928,9 +891,6 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabe
         if (pendingEmail.trim()) {
             return showFormError('You typed an email address but did not add it. Press + or Enter to add it, or clear the box.');
         }
-        if (pendingPhone.trim()) {
-            return showFormError('You typed a phone number but did not add it. Press + or Enter to add it, or clear the box.');
-        }
         // Alerts are only sent to the listed contacts, so a channel with nobody on it never notifies anyone.
         if (formData.alertPreferences.email && formData.emails.length === 0) {
             return showFormError('Email alerts are on, but no address is listed. Add one, or turn email alerts off.');
@@ -947,15 +907,13 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabe
     // Everything that would make this setup do less than the user expects, shown live in the summary.
     const checkSegs = segmentsOf(formData.checkTimeRange);
     const alertSegs = segmentsOf(formData.alertTimeRange);
-    const alertsOn = (formData.alertPreferences.email && formData.emails.length > 0) || !!formData.webhookUrl; // calls aren't sent yet
+    const alertsOn = (formData.alertPreferences.email && formData.emails.length > 0) || !!formData.webhookUrl;
     const issues = [];
     if (noDays) issues.push('No days are selected, so this server won’t be checked.');
     if (!noDays && checkSegs.length === 0) issues.push('Check hours start and end at the same time.');
     if (formData.alertPreferences.email && formData.emails.length === 0) issues.push('Email alerts are on but no address is listed.');
-    if (formData.alertPreferences.phone && formData.phones.length === 0) issues.push('Call alerts are on but no number is listed.');
     if (!webhookValid) issues.push('The webhook URL isn’t a valid address.');
     if (pendingEmail.trim()) issues.push('An email address is typed but not added.');
-    if (pendingPhone.trim()) issues.push('A phone number is typed but not added.');
     if (alertsOn && !noDays && checkSegs.length > 0 && alertSegs.length > 0 && !overlaps(checkSegs, alertSegs)) {
         issues.push('Alert hours sit outside check hours, so no alert would be sent.');
     }
@@ -1019,33 +977,15 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabe
                                     </ChannelCard>
 
                                     <ChannelCard
-                                        id="phoneAlert"
-                                        icon={Phone}
-                                        title="Phone call"
-                                        badge={<Badge variant="secondary">Coming soon</Badge>}
-                                        description="Calls aren’t sent yet. Numbers you add are saved for when they are."
-                                        checked={formData.alertPreferences.phone}
-                                        onChange={(e) => handleNestedChange('alertPreferences', 'phone', e.target.checked)}
-                                    >
-                                        <PhoneListManager
-                                            phones={formData.phones}
-                                            onAdd={addPhone}
-                                            onRemove={removePhone}
-                                            onPendingChange={setPendingPhone}
-                                            flagged={!!formError && !!pendingPhone.trim()}
-                                        />
-                                    </ChannelCard>
-
-                                    <ChannelCard
                                         icon={WebhooksLogo}
                                         title="Webhook"
-                                        badge={webhookLocked ? <Badge variant="default"><Lock weight="light" />Business plan</Badge> : null}
+                                        badge={webhookLocked ? <Badge variant="default"><Lock weight="light" />Paid plans</Badge> : null}
                                         description={webhookLocked ? 'Send alerts to your own app or chat tool.' : 'Send alerts to your own app or chat tool. Leave empty to skip.'}
                                         always
                                     >
                                         {webhookLocked ? (
                                             <p className="text-[13px] text-muted-foreground">
-                                                Webhooks come with the Business plan.{' '}
+                                                Webhooks come with every paid plan.{' '}
                                                 <Link href="/subscription" className="text-primary underline-offset-4 hover:underline">Compare plans</Link>
                                             </p>
                                         ) : (

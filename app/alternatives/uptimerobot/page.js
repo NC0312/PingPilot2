@@ -12,12 +12,12 @@ export const metadata = {
 }
 
 const ROWS = [
-    ['Free option', '2-day trial, 1 URL, 5-minute checks', 'Free plan: 50 monitors, 5-minute checks'],
-    ['Entry paid plan', 'Starter $10/month: 10 URLs, 3-minute checks', 'Solo $9/month on annual billing: 10 or 50 monitors, 60-second checks'],
-    ['1-minute checks from', 'Pro, $29/month (30 URLs)', 'Solo, $9/month'],
+    ['Free option', 'Free forever: 5 URLs, 5-minute checks', 'Free plan: 50 monitors, 5-minute checks'],
+    ['Entry paid plan', 'Starter $10/month: 20 URLs, 1-minute checks', 'Solo $9/month on annual billing: 10 or 50 monitors, 60-second checks'],
+    ['1-minute checks from', 'Starter, $10/month (20 URLs)', 'Solo, $9/month'],
     ['Fastest interval', '1 minute', '15 seconds (Scale), 30 seconds (Team)'],
-    ['Webhook alerts', 'Business, $79/month', 'Team, $35/month, with Slack, Teams, Telegram and PagerDuty'],
-    ['Highest listed plan', 'Business: 100 URLs', 'Scale: 200 or 500 monitors; Enterprise on request'],
+    ['Webhook alerts', 'Starter, $10/month', 'Team, $35/month, with Slack, Teams, Telegram and PagerDuty'],
+    ['Highest listed plan', 'Business: 200 URLs', 'Scale: 200 or 500 monitors; Enterprise on request'],
     ['History retention', 'Full history on paid plans', '3 months free, 12 to 24 months paid'],
 ]
 
@@ -46,7 +46,7 @@ export default function Page() {
                 <Prose>
                     <p><strong className="font-medium text-foreground">UptimeRobot fits</strong> teams that want many monitors, sub-minute checks, SMS and voice options, or integrations with chat and paging tools. Its plans scale to hundreds of monitors.</p>
                     <p><strong className="font-medium text-foreground">Ping Pilott fits</strong> individual developers and small teams who want to paste a URL, get an email when it fails, and look back over response times and every incident in one clear dashboard. It monitors websites, APIs, TCP ports and databases.</p>
-                    <p>If your needs are close to the middle, try both on a real URL. Ping Pilott&apos;s free trial needs no plan.</p>
+                    <p>If your needs are close to the middle, try both on a real URL. Ping Pilott&apos;s free plan never expires.</p>
                 </Prose>
             </Section>
         </MarketingPage>

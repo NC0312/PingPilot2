@@ -41,7 +41,7 @@ const JSON_LD = {
             description: 'Website and server uptime monitoring with scheduled checks, email alerts, response-time tracking and incident history.',
             url: SITE_URL,
             offers: [
-                { '@type': 'Offer', name: 'Free trial', price: '0', priceCurrency: 'USD' },
+                { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' },
                 { '@type': 'Offer', name: 'Starter', price: '10', priceCurrency: 'USD' },
                 { '@type': 'Offer', name: 'Pro', price: '29', priceCurrency: 'USD' },
                 { '@type': 'Offer', name: 'Business', price: '79', priceCurrency: 'USD' },
@@ -77,7 +77,7 @@ export default function LandingPage() {
                             <Reveal delay={240} className="flex flex-wrap items-center gap-3">
                                 <Button asChild size="lg">
                                     <Link href="/auth?mode=signup">
-                                        Start free trial
+                                        Start free
                                         <ButtonArrow />
                                     </Link>
                                 </Button>
@@ -89,7 +89,7 @@ export default function LandingPage() {
                                 </Button>
                             </Reveal>
                             <Reveal delay={300}>
-                                <p className="text-[13px] text-muted-foreground">Free 2-day trial. One URL, checked every 5 minutes.</p>
+                                <p className="text-[13px] text-muted-foreground">Free forever. 5 URLs, checked every 5 minutes.</p>
                             </Reveal>
                             <Reveal delay={360}>
                                 <Link
@@ -166,11 +166,11 @@ export default function LandingPage() {
                                         Add your first monitor today.
                                     </h2>
                                     <p className="mx-auto max-w-[46ch] text-[15px] leading-relaxed text-muted-foreground">
-                                        Start the free trial, paste a URL, and Ping Pilott starts checking it right away.
+                                        Start free, paste a URL, and Ping Pilott starts checking it right away.
                                     </p>
                                     <Button asChild size="lg">
                                         <Link href="/auth?mode=signup">
-                                            Start free trial
+                                            Start free
                                             <ButtonArrow />
                                         </Link>
                                     </Button>

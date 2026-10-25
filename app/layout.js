@@ -27,7 +27,7 @@ export const metadata = {
     template: "%s · Ping Pilott",
   },
   description:
-    "Monitor website and server uptime with checks as often as every minute, instant email alerts when a site goes down, response-time tracking and full incident history. Start a free trial.",
+    "Monitor website and server uptime with checks as often as every minute, instant email alerts when a site goes down, response-time tracking and full incident history. Free plan, no expiry.",
   applicationName: SITE_NAME,
   alternates: { canonical: "/" },
   icons: {

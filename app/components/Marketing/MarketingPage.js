@@ -37,7 +37,7 @@ export default function MarketingPage({ path, crumb, eyebrow, title, intro, faqs
                         </Reveal>
                         <Reveal delay={240}>
                             <Button asChild size="lg">
-                                <Link href="/auth?mode=signup">Start free trial<ButtonArrow /></Link>
+                                <Link href="/auth?mode=signup">Start free<ButtonArrow /></Link>
                             </Button>
                         </Reveal>
                     </div>
@@ -62,9 +62,9 @@ export default function MarketingPage({ path, crumb, eyebrow, title, intro, faqs
                     <section className="px-4 pb-20 pt-8 sm:px-8 md:pb-28">
                         <div className="mx-auto max-w-4xl space-y-6 text-center">
                             <h2 className="font-display text-3xl font-medium tracking-tight md:text-4xl">Add your first monitor today.</h2>
-                            <p className="text-[15px] text-muted-foreground">Free 2-day trial. One URL, checked every 5 minutes.</p>
+                            <p className="text-[15px] text-muted-foreground">Free forever. 5 URLs, checked every 5 minutes.</p>
                             <Button asChild size="lg">
-                                <Link href="/auth?mode=signup">Start free trial<ButtonArrow /></Link>
+                                <Link href="/auth?mode=signup">Start free<ButtonArrow /></Link>
                             </Button>
                         </div>
                     </section>

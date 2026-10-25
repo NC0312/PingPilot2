@@ -279,7 +279,7 @@ function SubscriptionContent() {
                                         ? `${user?.subscription?.status === 'trial' ? 'Trial ends' : user?.subscription?.status === 'expired' ? 'Ended' : 'Active until'} ${endDate}.`
                                         : user?.subscription?.status === 'active'
                                             ? 'Active with no end date.'
-                                            : 'Upgrade to keep monitoring beyond the trial.'}
+                                            : 'Upgrade for more servers and 1-minute checks.'}
                             </p>
                         </div>
                         <div>
@@ -410,7 +410,7 @@ function SubscriptionContent() {
                             })}
                         </div>
                         <p className="text-[13px] text-muted-foreground">
-                            Free is a {SUBSCRIPTION_PLANS.free.trialDays}-day trial with {SUBSCRIPTION_PLANS.free.features.maxServers} server.
+                            Free never expires and includes {SUBSCRIPTION_PLANS.free.features.maxServers} servers.
                         </p>
                     </section>
 
@@ -449,7 +449,7 @@ function SubscriptionContent() {
                                                 const p = getPlan(c.id);
                                                 return (
                                                     <td key={c.id} className={cn('px-4 py-3.5 text-center', c.key === tier && 'bg-primary/[0.04]')}>
-                                                        {p.trialDays ? `${p.trialDays}-day trial` : `${p.durationDays} days`}
+                                                        {p.durationDays ? `${p.durationDays} days` : 'No expiry'}
                                                     </td>
                                                 );
                                             })}
@@ -475,7 +475,7 @@ function SubscriptionContent() {
                                                 ))}
                                                 <div className="flex items-center justify-between gap-4 py-2.5">
                                                     <dt className="text-muted-foreground">Service period</dt>
-                                                    <dd className="text-right">{p.trialDays ? `${p.trialDays}-day trial` : `${p.durationDays} days`}</dd>
+                                                    <dd className="text-right">{p.durationDays ? `${p.durationDays} days` : 'No expiry'}</dd>
                                                 </div>
                                             </dl>
                                         </div>

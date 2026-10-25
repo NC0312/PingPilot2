@@ -17,10 +17,10 @@ export const SUBSCRIPTION_PLANS = {
     [PLAN_TYPES.FREE]: {
         title: "FREE",
         price: "$0",
-        period: "2-day trial",
-        description: "Perfect for testing our platform.",
+        period: "free forever",
+        description: "Watch your first sites, free.",
         features: {
-            maxServers: 1,
+            maxServers: 5,
             minCheckFrequency: 5,
             maxCheckFrequency: 30,
             advancedAlerts: false,
@@ -31,7 +31,7 @@ export const SUBSCRIPTION_PLANS = {
             supportResponseTime: "48 hours",
             prioritySupport: false,
         },
-        trialDays: 2
+        durationDays: null // Never expires
     },
     [PLAN_TYPES.STARTER_MONTHLY]: {
         title: "STARTER",
@@ -39,13 +39,13 @@ export const SUBSCRIPTION_PLANS = {
         period: "per month",
         description: "For individual developers.",
         features: {
-            maxServers: 10,
-            minCheckFrequency: 3,
+            maxServers: 20,
+            minCheckFrequency: 1,
             maxCheckFrequency: 60,
             advancedAlerts: false,
             apiAccess: false,
             prioritySupport: false,
-            webhookIntegrations: false,
+            webhookIntegrations: true,
             historicalReporting: true,
             supportResponseTime: "24 hours",
             prioritySupport: false,
@@ -58,13 +58,13 @@ export const SUBSCRIPTION_PLANS = {
         period: "per year (save 17%)",
         description: "For individual developers.",
         features: { // Same as monthly
-            maxServers: 10,
-            minCheckFrequency: 3,
+            maxServers: 20,
+            minCheckFrequency: 1,
             maxCheckFrequency: 60,
             advancedAlerts: false,
             apiAccess: false,
             prioritySupport: false,
-            webhookIntegrations: false,
+            webhookIntegrations: true,
             historicalReporting: true,
             supportResponseTime: "24 hours",
             prioritySupport: false,
@@ -77,13 +77,13 @@ export const SUBSCRIPTION_PLANS = {
         period: "per month",
         description: "For growing websites.",
         features: {
-            maxServers: 30,
+            maxServers: 60,
             minCheckFrequency: 1,
             maxCheckFrequency: 60,
             advancedAlerts: true,
             apiAccess: false,
             prioritySupport: true,
-            webhookIntegrations: false,
+            webhookIntegrations: true,
             historicalReporting: true,
             supportResponseTime: "12 hours",
             prioritySupport: true,
@@ -96,13 +96,13 @@ export const SUBSCRIPTION_PLANS = {
         period: "per year (save 17%)",
         description: "For growing websites.",
         features: { // Same as monthly
-            maxServers: 30,
+            maxServers: 60,
             minCheckFrequency: 1,
             maxCheckFrequency: 60,
             advancedAlerts: true,
             apiAccess: false,
             prioritySupport: true,
-            webhookIntegrations: false,
+            webhookIntegrations: true,
             historicalReporting: true,
             supportResponseTime: "12 hours",
             prioritySupport: true,
@@ -115,7 +115,7 @@ export const SUBSCRIPTION_PLANS = {
         period: "per month",
         description: "For SaaS & Enterprise.",
         features: {
-            maxServers: 100,
+            maxServers: 200,
             minCheckFrequency: 1,
             maxCheckFrequency: 60,
             advancedAlerts: true,
@@ -134,7 +134,7 @@ export const SUBSCRIPTION_PLANS = {
         period: "per year (save 17%)",
         description: "For SaaS & Enterprise.",
         features: { // Same as monthly
-            maxServers: 100,
+            maxServers: 200,
             minCheckFrequency: 1,
             maxCheckFrequency: 60,
             advancedAlerts: true,
@@ -179,10 +179,8 @@ export const createSubscription = (planType) => {
 
     // Calculate end date based on plan duration
     let endDate = null;
-    if (planType === PLAN_TYPES.FREE) {
-        endDate = now + (planDetails.trialDays * 24 * 60 * 60 * 1000);
-    } else if (planType === PLAN_TYPES.ADMIN) {
-        endDate = null; // Admin plan never expires
+    if (planType === PLAN_TYPES.FREE || planType === PLAN_TYPES.ADMIN) {
+        endDate = null; // Free and admin plans never expire
     } else if (planDetails.durationDays) {
         endDate = now + (planDetails.durationDays * 24 * 60 * 60 * 1000);
     }
@@ -191,7 +189,7 @@ export const createSubscription = (planType) => {
         plan: planType,
         startDate: now,
         endDate: endDate,
-        status: planType === PLAN_TYPES.FREE ? 'trial' : 'active',
+        status: 'active',
         features: planDetails.features,
         paymentId: null // This would be set during payment processing
     };
