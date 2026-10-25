@@ -1,4 +1,4 @@
-const PRIVATE = ['/dashboard', '/servers', '/incidents', '/account', '/subscription', '/admin', '/support'];
+const PRIVATE = ['/dashboard', '/servers', '/incidents', '/status-pages', '/account', '/subscription', '/admin', '/support'];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
