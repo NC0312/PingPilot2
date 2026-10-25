@@ -323,6 +323,7 @@ export default function EnhancedServersPage() {
                                     ...server,
                                     status: data.status,
                                     responseTime: data.latency,
+                                    serverTime: data.serverTime ?? null,
                                     lastChecked: data.lastChecked
                                 };
                             }
@@ -336,6 +337,7 @@ export default function EnhancedServersPage() {
                             ...prev,
                             status: data.status,
                             responseTime: data.latency,
+                            serverTime: data.serverTime ?? null,
                             lastChecked: data.lastChecked
                         }));
 
@@ -477,6 +479,7 @@ export default function EnhancedServersPage() {
                     ...prev,
                     status: checkData.status,
                     responseTime: checkData.responseTime,
+                    serverTime: checkData.serverTime ?? null,
                     error: checkData.error,
                     lastChecked: checkData.timestamp
                 }));
@@ -487,6 +490,7 @@ export default function EnhancedServersPage() {
                             ...server,
                             status: checkData.status,
                             responseTime: checkData.responseTime,
+                            serverTime: checkData.serverTime ?? null,
                             error: checkData.error,
                             lastChecked: checkData.timestamp
                         }
@@ -668,6 +672,11 @@ export default function EnhancedServersPage() {
 
     const s = selectedServer;
     const sStatus = s?.status === 'up' || s?.status === 'down' ? s.status : 'unknown';
+    // The true reading: how long the server itself took, and the rest (finding the address, connecting, TLS, and the trip
+    // there and back). Only when the backend could tell them apart; otherwise the single response time is shown as before.
+    const hasBreakdown = !!s && sStatus === 'up' && s.responseTime > 0 && Number.isFinite(s.serverTime) && s.serverTime >= 0;
+    const serverMs = hasBreakdown ? Math.min(Math.round(s.serverTime), s.responseTime) : null;
+    const networkMs = hasBreakdown ? Math.max(0, s.responseTime - serverMs) : null;
     const monitoring = s?.monitoring;
     const alerts = monitoring?.alerts;
     const stateSince = s?.lastStatusChange || s?.lastChecked;
@@ -785,12 +794,36 @@ export default function EnhancedServersPage() {
                                     </div>
 
                                     <div className="sm:text-right">
-                                        <p className={cn('font-display text-5xl font-medium tracking-tight tabular-nums', !s.responseTime && 'text-muted-foreground')}>
-                                            {s.responseTime ? s.responseTime : '—'}
-                                            {s.responseTime ? <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span> : null}
-                                        </p>
+                                        {hasBreakdown ? (
+                                            <div
+                                                role="group"
+                                                aria-label={`Server ${serverMs} milliseconds, network ${networkMs} milliseconds`}
+                                                title="Server is how long the site itself took to answer. Network is everything else: finding the address, connecting, and the trip there and back."
+                                                className="flex items-end gap-7 sm:justify-end"
+                                            >
+                                                <div>
+                                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Server</p>
+                                                    <p className="font-display text-5xl font-medium tracking-tight tabular-nums">
+                                                        {serverMs}
+                                                        <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span>
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Network</p>
+                                                    <p className="font-display text-3xl font-medium tracking-tight tabular-nums text-muted-foreground">
+                                                        {networkMs}
+                                                        <span className="ml-1 text-base font-normal">ms</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className={cn('font-display text-5xl font-medium tracking-tight tabular-nums', !s.responseTime && 'text-muted-foreground')}>
+                                                {s.responseTime ? s.responseTime : '—'}
+                                                {s.responseTime ? <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span> : null}
+                                            </p>
+                                        )}
                                         <p className="mt-1 text-xs text-muted-foreground">
-                                            Last response{s.lastChecked ? ` · checked ${timeAgo(s.lastChecked)}` : ''}
+                                            Last response{s.lastChecked ? ` · checked ${timeAgo(s.lastChecked)}` : ''}{hasBreakdown ? ` · ${s.responseTime} ms in all` : ''}
                                         </p>
                                     </div>
                                 </div>
