@@ -25,9 +25,9 @@ export default function Page() {
                 <ul className="divide-y divide-white/[0.07] border-y border-white/[0.07]">
                     {POSTS.map((p) => (
                         <li key={p.slug} className="py-7">
-                            <h2 className="font-display text-2xl font-medium tracking-tight">
+                            <h3 className="font-display text-2xl font-medium tracking-tight">
                                 <Link href={`/blog/${p.slug}`} className="hover:text-primary">{p.title}</Link>
-                            </h2>
+                            </h3>
                             <p className="mt-2.5 max-w-[60ch] text-[15px] leading-relaxed text-muted-foreground">{p.description}</p>
                             <p className="mt-3 text-xs text-muted-foreground">{p.readMinutes} min read</p>
                         </li>

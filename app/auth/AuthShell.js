@@ -26,9 +26,9 @@ export default function AuthShell({ children }) {
 
                 <div className="max-w-lg space-y-8">
                     <div className="space-y-5">
-                        <h2 className="font-display text-5xl font-medium leading-[1.02] tracking-[-0.03em] xl:text-6xl">
+                        <p className="font-display text-5xl font-medium leading-[1.02] tracking-[-0.03em] xl:text-6xl">
                             Know it&apos;s down before your customers do.
-                        </h2>
+                        </p>
                         <p className="max-w-[44ch] text-base leading-relaxed text-muted-foreground">
                             Scheduled checks, instant alerts and a clear history of every incident.
                         </p>

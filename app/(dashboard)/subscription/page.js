@@ -327,7 +327,7 @@ function SubscriptionContent() {
                     {/* Plan choice */}
                     <section aria-labelledby="choose-plan" className="space-y-6">
                         <div className="flex flex-wrap items-center justify-between gap-4">
-                            <h2 id="choose-plan" className="font-display text-2xl font-medium tracking-tight">Choose a plan</h2>
+                            <h2 id="choose-plan" className="font-display text-xl font-medium tracking-tight">Choose a plan</h2>
                             <div
                                 role="radiogroup"
                                 aria-label="Billing period"
@@ -416,7 +416,7 @@ function SubscriptionContent() {
 
                     {/* Comparison */}
                     <section aria-labelledby="compare" className="space-y-5">
-                        <h2 id="compare" className="font-display text-2xl font-medium tracking-tight">Compare plans</h2>
+                        <h2 id="compare" className="font-display text-xl font-medium tracking-tight">Compare plans</h2>
 
                         <div className="bezel-sm hidden md:block">
                             <div className="bezel-sm-core overflow-hidden">

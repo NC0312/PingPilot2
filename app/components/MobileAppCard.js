@@ -71,7 +71,7 @@ export default function MobileAppCard() {
             </div>
 
             <div className="space-y-2">
-              <h2 id="mobile-app-heading" className="font-display text-2xl font-medium tracking-tight">
+              <h2 id="mobile-app-heading" className="font-display text-xl font-medium tracking-tight">
                 Get alerts on your phone.
               </h2>
               <p className="max-w-[52ch] text-sm leading-relaxed text-muted-foreground">

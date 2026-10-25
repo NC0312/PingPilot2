@@ -29,7 +29,7 @@ export default function Page() {
             faqs={FAQS}
             cta={false}
         >
-            <PricingSection />
+            <PricingSection compact />
         </MarketingPage>
     )
 }

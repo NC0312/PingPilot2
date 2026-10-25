@@ -75,7 +75,8 @@ function buildPlans(yearly) {
     ]
 }
 
-export default function PricingSection() {
+// compact: the heading sits at the size of a sub-page section (the pricing page already has its own H1)
+export default function PricingSection({ compact = false }) {
     const [billing, setBilling] = useState('monthly')
     const yearly = billing === 'yearly'
     const plans = buildPlans(yearly)
@@ -86,7 +87,7 @@ export default function PricingSection() {
                 <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
                     <Reveal className="max-w-xl space-y-5">
                         <span className="eyebrow">Pricing</span>
-                        <h2 className="font-display text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">
+                        <h2 className={compact ? 'font-display text-3xl font-medium leading-[1.08] tracking-tight md:text-4xl' : 'font-display text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl'}>
                             Pay for the URLs you watch.
                         </h2>
                         <p className="text-[15px] leading-relaxed text-muted-foreground">

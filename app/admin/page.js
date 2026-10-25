@@ -191,7 +191,7 @@ export default function AdminDashboard() {
                 <Reveal className="lg:col-span-7">
                     <section aria-labelledby="activity-heading" className="bezel-sm h-full">
                         <div className="bezel-sm-core h-full p-6">
-                            <h2 id="activity-heading" className="font-display text-lg font-medium tracking-tight">Recent activity</h2>
+                            <h2 id="activity-heading" className="font-display text-xl font-medium tracking-tight">Recent activity</h2>
                             {loading ? (
                                 <div className="mt-5 space-y-3" role="status" aria-label="Loading activity">
                                     {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
@@ -222,7 +222,7 @@ export default function AdminDashboard() {
                     <Reveal delay={70}>
                         <section aria-labelledby="status-heading" className="bezel-sm">
                             <div className="bezel-sm-core p-6">
-                                <h2 id="status-heading" className="flex items-center gap-2 font-display text-lg font-medium tracking-tight">
+                                <h2 id="status-heading" className="flex items-center gap-2 font-display text-xl font-medium tracking-tight">
                                     <Pulse weight="light" className="size-5 text-primary" aria-hidden="true" />
                                     Services
                                 </h2>

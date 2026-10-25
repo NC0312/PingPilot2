@@ -337,7 +337,7 @@ export default function DashboardPage() {
           <section aria-labelledby="servers-heading" className="space-y-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h2 id="servers-heading" className="font-display text-2xl font-medium tracking-tight">
+                <h2 id="servers-heading" className="font-display text-xl font-medium tracking-tight">
                   {admin ? 'All servers' : 'Your servers'}
                 </h2>
                 {showUsage && !loading && (

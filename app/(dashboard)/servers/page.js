@@ -14,6 +14,7 @@ import {
     WarningCircle,
     CheckCircle,
     MagnifyingGlass,
+    CaretUpDown,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useAuth } from '@/app/context/AuthContext';
@@ -258,6 +259,9 @@ export default function EnhancedServersPage() {
     const [statusFilter, setStatusFilter] = useState('all');
     const [sortMode, setSortMode] = useState('problems');
     const listRef = useRef(null);
+    // The server picker is a dropdown above the details; it closes on a pick, Escape, or a click outside
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const pickerRef = useRef(null);
     // The newest selection, for the loader, the timer and the socket handler. They are set up once and must not be rebuilt on every pick.
     const selectedRef = useRef(null);
     const [checkMessage, setCheckMessage] = useState('');
@@ -317,7 +321,19 @@ export default function EnhancedServersPage() {
         if (!row) return;
         if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
         else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
-    }, [selectedId]);
+    }, [selectedId, pickerOpen]);
+
+    useEffect(() => {
+        if (!pickerOpen) return;
+        const onDown = (e) => { if (pickerRef.current && !pickerRef.current.contains(e.target)) setPickerOpen(false); };
+        const onKey = (e) => { if (e.key === 'Escape') setPickerOpen(false); };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [pickerOpen]);
 
     // Set up initial data loading and WebSocket updates
     const { socket } = useSocket();
@@ -633,10 +649,8 @@ export default function EnhancedServersPage() {
         return (
             <PageContainer className="space-y-10">
                 <PageHeader eyebrow="Monitoring" title="Servers" description="Loading your monitors." actions={addButton} />
-                <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]" role="status" aria-label="Loading servers">
-                    <div className="space-y-2">
-                        {[0, 1, 2].map((i) => <Skeleton key={i} className="h-[4.5rem] rounded-2xl" />)}
-                    </div>
+                <div className="space-y-6" role="status" aria-label="Loading servers">
+                    <Skeleton className="h-14 rounded-2xl" />
                     <div className="space-y-6">
                         <Skeleton className="h-52 rounded-[1.375rem]" />
                         <Skeleton className="h-28 rounded-[1.375rem]" />
@@ -733,8 +747,114 @@ export default function EnhancedServersPage() {
         requestAnimationFrame(() => listRef.current?.querySelector(`[data-id="${idOf(next)}"] button`)?.focus({ preventScroll: true }));
     };
 
+    // Server picker: a dropdown showing the selected server; the list inside scrolls on its own, so 5 or 500 servers fit
+    const picker = (
+        <nav aria-label="Servers" ref={pickerRef} className="relative z-20 w-full min-w-0 sm:w-80 lg:w-96">
+            <button
+                type="button"
+                onClick={() => setPickerOpen((o) => !o)}
+                aria-haspopup="listbox"
+                aria-expanded={pickerOpen}
+                className="flex h-[3.75rem] w-full items-center gap-3 rounded-2xl bg-white/[0.03] px-4 text-left ring-1 ring-white/[0.1] transition-colors duration-300 ease-fluid hover:bg-white/[0.06]"
+            >
+                {s && <StatusDot status={s.status} />}
+                <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Viewing</span>
+                    <span className="block truncate text-sm font-medium">{s ? s.name : 'Choose a server'}</span>
+                </span>
+                <CaretUpDown weight="bold" aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+            {pickerOpen && (
+            <div className="absolute right-0 top-full mt-2 w-full sm:w-[26rem] sm:max-w-[calc(100vw-3rem)] flex max-h-[min(32rem,70vh)] flex-col overflow-hidden rounded-2xl bg-background/95 shadow-2xl ring-1 ring-white/[0.12] backdrop-blur-xl">
+                {showControls && (
+                    <div className="space-y-2.5 border-b border-white/[0.07] p-3">
+                        <div className="relative">
+                            <MagnifyingGlass weight="light" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
+                            <Input type="search" autoFocus aria-label="Find a server" placeholder="Find a server" value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-full pl-10" />
+                        </div>
+                        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show servers by status">
+                            {[
+                                ['all', 'All'],
+                                ['down', 'Down'],
+                                ['up', 'Up'],
+                                ['unknown', 'Pending'],
+                            ]
+                                .filter(([key]) => key === 'all' || counts[key] > 0 || statusFilter === key)
+                                .map(([key, label]) => (
+                                    <button
+                                        key={key}
+                                        type="button"
+                                        aria-pressed={statusFilter === key}
+                                        onClick={() => setStatusFilter(key)}
+                                        className={cn(
+                                            'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium tabular-nums ring-1 transition-colors duration-300 ease-fluid',
+                                            statusFilter === key
+                                                ? 'bg-primary/15 text-foreground ring-primary/50'
+                                                : 'text-muted-foreground ring-white/[0.1] hover:bg-white/[0.06] hover:text-foreground',
+                                            key === 'down' && counts.down > 0 && statusFilter !== key && 'text-destructive'
+                                        )}
+                                    >
+                                        {label}
+                                        <span className="font-mono">{counts[key]}</span>
+                                    </button>
+                                ))}
+                        </div>
+                    </div>
+                )}
+                <ul ref={listRef} onKeyDown={handleListKeys} className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain p-1.5">
+                    {listed.map((server) => {
+                        const active = s && idOf(server) === idOf(s);
+                        const status = statusOf(server);
+                        return (
+                            <li key={idOf(server)} data-id={idOf(server)}>
+                                <button
+                                    type="button"
+                                    onClick={() => { handleServerSelect(server); setPickerOpen(false); }}
+                                    aria-current={active ? 'true' : undefined}
+                                    title={displayUrl(server.url)}
+                                    className={cn(
+                                        'flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left transition-colors duration-300 ease-fluid',
+                                        active ? 'bg-primary/10 ring-1 ring-primary/50' : 'hover:bg-white/[0.06]'
+                                    )}
+                                >
+                                    <StatusDot status={server.status} />
+                                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{server.name}</span>
+                                    <span className={cn('shrink-0 font-mono text-xs tabular-nums', status === 'down' ? 'text-destructive' : 'text-muted-foreground')}>
+                                        {status === 'down' ? 'Down' : server.responseTime ? `${server.responseTime} ms` : '—'}
+                                    </span>
+                                    <span className="sr-only">{status === 'up' ? 'Operational' : status === 'down' ? 'Down' : 'Pending'}</span>
+                                </button>
+                            </li>
+                        );
+                    })}
+                    {listed.length === 0 && (
+                        <li className="space-y-2 px-2.5 py-3 text-sm text-muted-foreground">
+                            <p>No servers match.</p>
+                            <Button size="sm" variant="outline" onClick={clearFilters}>Clear filters</Button>
+                        </li>
+                    )}
+                </ul>
+                {showControls && (
+                    <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] px-3 py-2 text-xs text-muted-foreground">
+                        <span role="status" aria-live="polite">
+                            {filtered ? `${listed.length} of ${servers.length}` : plural(servers.length, 'server')}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setSortMode(sortMode === 'problems' ? 'name' : 'problems')}
+                            className="rounded-md px-1.5 py-1 transition-colors duration-300 ease-fluid hover:bg-white/[0.06] hover:text-foreground"
+                        >
+                            Sort: {sortMode === 'problems' ? 'problems first' : 'A–Z'}
+                        </button>
+                    </div>
+                )}
+            </div>
+            )}
+        </nav>
+    );
+
     return (
-        <PageContainer className="space-y-10">
+        <PageContainer className="space-y-8">
             <PageHeader
                 eyebrow="Monitoring"
                 title="Servers"
@@ -743,7 +863,7 @@ export default function EnhancedServersPage() {
                         ? `${plural(downCount, 'server')} down, ${upCount} operational.`
                         : `${plural(servers.length, 'server')} monitored, ${upCount} operational.`
                 }
-                actions={addButton}
+                actions={<>{addButton}{picker}</>}
             />
 
             <TrialNotice servers={servers} />
@@ -756,95 +876,7 @@ export default function EnhancedServersPage() {
 
             <p className="sr-only" role="status" aria-live="polite">{checkMessage}</p>
 
-            <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)] lg:items-start xl:grid-cols-[300px_minmax(0,1fr)]">
-                {/* Server picker: one compact row per server in a list that scrolls on its own, so 5 or 500 servers fit the same space */}
-                <nav aria-label="Servers" className="min-w-0 lg:sticky lg:top-6">
-                    <div className="flex flex-col overflow-hidden rounded-2xl bg-white/[0.02] ring-1 ring-white/[0.08] lg:max-h-[calc(100vh-3rem)]">
-                        {showControls && (
-                            <div className="space-y-2.5 border-b border-white/[0.07] p-3">
-                                <div className="relative">
-                                    <MagnifyingGlass weight="light" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
-                                    <Input type="search" aria-label="Find a server" placeholder="Find a server" value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-full pl-10" />
-                                </div>
-                                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show servers by status">
-                                    {[
-                                        ['all', 'All'],
-                                        ['down', 'Down'],
-                                        ['up', 'Up'],
-                                        ['unknown', 'Pending'],
-                                    ]
-                                        .filter(([key]) => key === 'all' || counts[key] > 0 || statusFilter === key)
-                                        .map(([key, label]) => (
-                                            <button
-                                                key={key}
-                                                type="button"
-                                                aria-pressed={statusFilter === key}
-                                                onClick={() => setStatusFilter(key)}
-                                                className={cn(
-                                                    'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium tabular-nums ring-1 transition-colors duration-300 ease-fluid',
-                                                    statusFilter === key
-                                                        ? 'bg-primary/15 text-foreground ring-primary/50'
-                                                        : 'text-muted-foreground ring-white/[0.1] hover:bg-white/[0.06] hover:text-foreground',
-                                                    key === 'down' && counts.down > 0 && statusFilter !== key && 'text-destructive'
-                                                )}
-                                            >
-                                                {label}
-                                                <span className="font-mono">{counts[key]}</span>
-                                            </button>
-                                        ))}
-                                </div>
-                            </div>
-                        )}
-                        <ul ref={listRef} onKeyDown={handleListKeys} className="relative max-h-80 space-y-0.5 overflow-y-auto overscroll-contain p-1.5 lg:max-h-none lg:min-h-0 lg:flex-1">
-                            {listed.map((server) => {
-                                const active = s && idOf(server) === idOf(s);
-                                const status = statusOf(server);
-                                return (
-                                    <li key={idOf(server)} data-id={idOf(server)}>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleServerSelect(server)}
-                                            aria-current={active ? 'true' : undefined}
-                                            title={displayUrl(server.url)}
-                                            className={cn(
-                                                'flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left transition-colors duration-300 ease-fluid',
-                                                active ? 'bg-primary/10 ring-1 ring-primary/50' : 'hover:bg-white/[0.06]'
-                                            )}
-                                        >
-                                            <StatusDot status={server.status} />
-                                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{server.name}</span>
-                                            <span className={cn('shrink-0 font-mono text-xs tabular-nums', status === 'down' ? 'text-destructive' : 'text-muted-foreground')}>
-                                                {status === 'down' ? 'Down' : server.responseTime ? `${server.responseTime} ms` : '—'}
-                                            </span>
-                                            <span className="sr-only">{status === 'up' ? 'Operational' : status === 'down' ? 'Down' : 'Pending'}</span>
-                                        </button>
-                                    </li>
-                                );
-                            })}
-                            {listed.length === 0 && (
-                                <li className="space-y-2 px-2.5 py-3 text-sm text-muted-foreground">
-                                    <p>No servers match.</p>
-                                    <Button size="sm" variant="outline" onClick={clearFilters}>Clear filters</Button>
-                                </li>
-                            )}
-                        </ul>
-                        {showControls && (
-                            <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] px-3 py-2 text-xs text-muted-foreground">
-                                <span role="status" aria-live="polite">
-                                    {filtered ? `${listed.length} of ${servers.length}` : plural(servers.length, 'server')}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => setSortMode(sortMode === 'problems' ? 'name' : 'problems')}
-                                    className="rounded-md px-1.5 py-1 transition-colors duration-300 ease-fluid hover:bg-white/[0.06] hover:text-foreground"
-                                >
-                                    Sort: {sortMode === 'problems' ? 'problems first' : 'A–Z'}
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </nav>
-
+            <div className="space-y-6">
                 {s && (
                     <div className="min-w-0 space-y-6">
                         {/* Status, with the last 24 hours at a glance */}

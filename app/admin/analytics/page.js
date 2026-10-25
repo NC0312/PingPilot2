@@ -90,7 +90,7 @@ function ChartPanel({ title, description, className = '', delay = 0, empty, hasD
             <div className="bezel-sm h-full">
                 <div className="bezel-sm-core flex h-full flex-col gap-5 p-6">
                     <div>
-                        <h2 className="font-display text-lg font-medium tracking-tight">{title}</h2>
+                        <h2 className="font-display text-xl font-medium tracking-tight">{title}</h2>
                         {description && <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>}
                     </div>
                     {hasData ? (
