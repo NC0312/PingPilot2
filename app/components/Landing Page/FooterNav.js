@@ -13,9 +13,10 @@ export default function FooterNav() {
             <div className="space-y-3">
                 <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground/70">Product</p>
                 <ul className="space-y-3">
-                    <li><a href="#features" className={linkClass}>Features</a></li>
-                    <li><a href="#how" className={linkClass}>How it works</a></li>
-                    <li><a href="#pricing" className={linkClass}>Pricing</a></li>
+                    <li><Link href="/website-uptime-monitoring" className={linkClass}>Website uptime monitoring</Link></li>
+                    <li><Link href="/server-monitoring" className={linkClass}>Server monitoring</Link></li>
+                    <li><Link href="/#features" className={linkClass}>Features</Link></li>
+                    <li><Link href="/pricing" className={linkClass}>Pricing</Link></li>
                 </ul>
             </div>
             <div className="space-y-3">

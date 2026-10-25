@@ -6,9 +6,9 @@ import { Brand } from '@/components/ui/brand'
 import { Button, ButtonArrow } from '@/components/ui/button'
 
 const NAV_LINKS = [
-    { label: 'Features', href: '#features' },
-    { label: 'How it works', href: '#how' },
-    { label: 'Pricing', href: '#pricing' },
+    { label: 'Features', href: '/#features' },
+    { label: 'How it works', href: '/#how' },
+    { label: 'Pricing', href: '/pricing' },
 ]
 
 const Navbar = () => {
