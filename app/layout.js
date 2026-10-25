@@ -1,23 +1,20 @@
-import { Geist, Geist_Mono, Outfit } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "./context/AuthContext";
 import { SocketProvider } from "./components/providers/SocketProvider";
 import { SITE_URL, SITE_NAME } from "@/lib/site";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const outfit = Outfit({
+// Fonts are served from our own files, not fetched from Google at build time. A build on Vercel was handed a newer
+// Google Fonts address format that Next 16.1.5 with Turbopack cannot read ("next/font/google queries have exactly one
+// entry"), which failed the whole deploy. Geist comes from the "geist" package (variable fonts, the same variables as
+// before: --font-geist-sans, --font-geist-mono). Outfit is the variable latin file from @fontsource-variable/outfit.
+const outfit = localFont({
+  src: "../node_modules/@fontsource-variable/outfit/files/outfit-latin-wght-normal.woff2",
   variable: "--font-outfit",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "100 900",
+  display: "swap",
 });
 
 export const metadata = {
@@ -60,7 +57,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} font-sans`}
+        className={`${GeistSans.variable} ${GeistMono.variable} ${outfit.variable} font-sans`}
       >
         <a
           href="#main-content"
