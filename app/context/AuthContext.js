@@ -25,6 +25,10 @@ const clearTokens = () => {
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    // Whether a saved session exists, known the moment the page mounts (null before that, during server rendering).
+    // The /me check below takes a network round trip; this lets signed-out and signed-in pages show the right state
+    // straight away instead of showing signed-out until that check finishes.
+    const [hasSavedSession, setHasSavedSession] = useState(null);
     const [error, setError] = useState(null);
     const router = useRouter();
 
@@ -74,6 +78,7 @@ export const AuthProvider = ({ children }) => {
         const checkAuth = async () => {
             try {
                 const token = localStorage.getItem('token');
+                setHasSavedSession(!!token);
 
                 if (!token) {
                     return;
@@ -542,6 +547,9 @@ export const AuthProvider = ({ children }) => {
         apiRequest, // Expose apiRequest for other components to use
         refreshUser,
         hasSignedOut: () => signedOutByUser.current,
+        // 'in' | 'out' | 'pending' for UI that differs by sign-in state without waiting for the server to confirm it.
+        // A saved session counts as 'in' until the check says otherwise; 'pending' only before the page has mounted.
+        authView: user ? 'in' : !loading ? 'out' : hasSavedSession === null ? 'pending' : hasSavedSession ? 'in' : 'out',
         // New admin management functions
         makeAdmin,
         setupInitialAdmin,

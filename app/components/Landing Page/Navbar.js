@@ -13,7 +13,10 @@ const NAV_LINKS = [
 ]
 
 const Navbar = () => {
-    const { user } = useAuth()
+    const { authView } = useAuth()
+    const signedIn = authView === 'in'
+    // Before the page has mounted the state is unknown: keep the buttons' space but show nothing, so the wrong one never flashes
+    const pending = authView === 'pending'
     const [open, setOpen] = useState(false)
 
     useEffect(() => {
@@ -28,7 +31,7 @@ const Navbar = () => {
         }
     }, [open])
 
-    const primary = user
+    const primary = signedIn
         ? { href: '/dashboard', label: 'Dashboard' }
         : { href: '/auth?mode=signup', label: 'Start free' }
 
@@ -66,7 +69,7 @@ const Navbar = () => {
                                 <ButtonArrow />
                             </Link>
                         </Button>
-                        {!user && (
+                        {!signedIn && (
                             <Button asChild size="lg" variant="outline" onClick={() => setOpen(false)}>
                                 <Link href="/auth">Sign in</Link>
                             </Button>
@@ -91,8 +94,8 @@ const Navbar = () => {
                     ))}
                 </nav>
 
-                <div className="hidden items-center gap-1.5 md:flex">
-                    {!user && (
+                <div className={`hidden items-center gap-1.5 md:flex ${pending ? 'invisible' : ''}`}>
+                    {!signedIn && (
                         <Button asChild variant="ghost" size="sm">
                             <Link href="/auth">Sign in</Link>
                         </Button>
