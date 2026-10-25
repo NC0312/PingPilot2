@@ -34,6 +34,8 @@ import { Reveal } from '@/components/ui/reveal';
 import TrialNotice from '@/app/components/TrialNotice';
 import { displayUrl, toHref, timeAgo, formatPhone, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { fetchAllServers } from '@/lib/servers';
+import { countByStatus, filterAndSort, statusOf } from '@/lib/server-list';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -253,6 +255,11 @@ export default function EnhancedServersPage() {
     const [historyLoading, setHistoryLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [query, setQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [sortMode, setSortMode] = useState('problems');
+    const listRef = useRef(null);
+    // The newest selection, for the loader, the timer and the socket handler. They are set up once and must not be rebuilt on every pick.
+    const selectedRef = useRef(null);
     const [checkMessage, setCheckMessage] = useState('');
     const { user, apiRequest } = useAuth();
     // Each history request gets a number; only the newest one may update the chart.
@@ -268,26 +275,22 @@ export default function EnhancedServersPage() {
         try {
             if (isInitialLoad) setLoading(true);
 
-            const response = await apiRequest('/api/servers', {
-                method: 'GET'
-            });
-
-            if (response.status === 'success' && response.data.servers) {
-                const serversList = response.data.servers;
+            {
+                const serversList = await fetchAllServers(apiRequest);
 
                 setError(null);
                 setServers(serversList);
 
                 // If we have servers, select the first one by default
-                if (serversList.length > 0 && !selectedServer) {
+                if (serversList.length > 0 && !selectedRef.current) {
                     // /servers?s=<id> opens that server, so a refresh or a shared link lands where you were
                     const wanted = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('s') : null;
-                    const initial = serversList.find((x) => idOf(x) === wanted) || serversList[0];
+                    const initial = serversList.find((x) => idOf(x) === wanted) || filterAndSort(serversList)[0];
                     setSelectedServer(initial);
                     fetchServerHistory(idOf(initial), initial);
-                } else if (selectedServer) {
+                } else if (selectedRef.current) {
                     // Update selected server if it's in the list
-                    const serverId = idOf(selectedServer);
+                    const serverId = idOf(selectedRef.current);
                     const updatedServer = serversList.find(s => (s._id === serverId || s.id === serverId));
                     if (updatedServer) {
                         setSelectedServer(updatedServer);
@@ -302,6 +305,19 @@ export default function EnhancedServersPage() {
             if (isInitialLoad) setLoading(false);
         }
     };
+
+    // Keep the selected row visible inside the list, without moving the page
+    const selectedId = selectedServer ? idOf(selectedServer) : null;
+    useEffect(() => {
+        selectedRef.current = selectedServer;
+    });
+    useEffect(() => {
+        const list = listRef.current;
+        const row = selectedId && list ? list.querySelector(`[data-id="${selectedId}"]`) : null;
+        if (!row) return;
+        if (row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
+        else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+    }, [selectedId]);
 
     // Set up initial data loading and WebSocket updates
     const { socket } = useSocket();
@@ -335,7 +351,8 @@ export default function EnhancedServersPage() {
                     });
 
                     // Update selected server if it matches
-                    if (selectedServer && (selectedServer._id === data.serverId || selectedServer.id === data.serverId)) {
+                    const current = selectedRef.current;
+                    if (current && (current._id === data.serverId || current.id === data.serverId)) {
                         setSelectedServer(prev => ({
                             ...prev,
                             status: data.status,
@@ -350,7 +367,7 @@ export default function EnhancedServersPage() {
                                 time: new Date(data.lastChecked),
                                 avgTime: data.latency || 0,
                                 status: data.status || 'unknown',
-                                ...zoned(data.lastChecked, selectedServer?.timezone),
+                                ...zoned(data.lastChecked, current?.timezone),
                                 formattedTime: formatTimestamp(new Date(data.lastChecked), null, 'HH:mm:ss')
                             };
 
@@ -387,7 +404,8 @@ export default function EnhancedServersPage() {
 
             return () => clearInterval(intervalId);
         }
-    }, [user, socket, selectedServer?._id]); // Re-bind if selected server changes to ensure closure has correct ID
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, socket]);
 
     // Fetch server history data. `forServer` carries the monitoring schedule used to filter points.
     const fetchServerHistory = async (serverId, forServer = selectedServer) => {
@@ -695,8 +713,25 @@ export default function EnhancedServersPage() {
     const uptime24 = calculateUptime(24);
     const incidents = s ? getIncidents(responseTimeData, monitoring?.frequency, sStatus === 'down') : [];
     const frequency = monitoring?.frequency || 5;
-    const q = query.trim().toLowerCase();
-    const listed = q ? servers.filter((x) => `${x.name} ${x.url}`.toLowerCase().includes(q)) : servers;
+    // The list: search, status filter and order. Controls appear once the list is long enough to need them.
+    const counts = countByStatus(servers);
+    const listed = filterAndSort(servers, { query, status: statusFilter, sort: sortMode });
+    const showControls = servers.length > 5;
+    const filtered = query.trim() !== '' || statusFilter !== 'all';
+    const clearFilters = () => {
+        setQuery('');
+        setStatusFilter('all');
+    };
+    // ↑ ↓ move through the list, like any list box
+    const handleListKeys = (e) => {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        e.preventDefault();
+        const at = listed.findIndex((x) => s && idOf(x) === idOf(s));
+        const next = listed[Math.min(listed.length - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))];
+        if (!next) return;
+        handleServerSelect(next);
+        requestAnimationFrame(() => listRef.current?.querySelector(`[data-id="${idOf(next)}"] button`)?.focus({ preventScroll: true }));
+    };
 
     return (
         <PageContainer className="space-y-10">
@@ -722,45 +757,92 @@ export default function EnhancedServersPage() {
             <p className="sr-only" role="status" aria-live="polite">{checkMessage}</p>
 
             <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)] lg:items-start xl:grid-cols-[300px_minmax(0,1fr)]">
-                {/* Server picker: horizontal strip on mobile, list on desktop */}
-                <nav aria-label="Servers" className="-mx-4 min-w-0 space-y-3 px-4 sm:-mx-8 sm:px-8 lg:sticky lg:top-6 lg:mx-0 lg:px-0">
-                    {servers.length > 6 && (
-                        <div className="relative">
-                            <MagnifyingGlass weight="light" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
-                            <Input type="search" aria-label="Find a server" placeholder="Find a server" value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-full pl-10" />
-                        </div>
-                    )}
-                    <ul className="flex snap-x gap-2.5 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible lg:pb-0">
-                        {listed.map((server) => {
-                            const active = s && idOf(server) === idOf(s);
-                            return (
-                                <li key={idOf(server)} className="w-[230px] shrink-0 snap-start lg:w-auto">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleServerSelect(server)}
-                                        aria-current={active ? 'true' : undefined}
-                                        className={cn(
-                                            'flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl px-4 py-3 text-left ring-1 transition-[background-color,box-shadow] duration-500 ease-fluid',
-                                            active
-                                                ? 'bg-primary/10 ring-2 ring-primary/50'
-                                                : 'bg-white/[0.03] ring-white/[0.08] hover:bg-white/[0.06] hover:ring-white/20'
-                                        )}
-                                    >
-                                        <StatusDot status={server.status} />
-                                        <span className="min-w-0 flex-1">
-                                            <span className="block truncate text-sm font-medium">{server.name}</span>
-                                            <span className="block truncate font-mono text-xs text-muted-foreground">{displayUrl(server.url)}</span>
-                                        </span>
-                                        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                                            {server.responseTime ? `${server.responseTime} ms` : '—'}
-                                        </span>
-                                        <span className="sr-only">{server.status === 'up' ? 'Operational' : server.status === 'down' ? 'Down' : 'Pending'}</span>
-                                    </button>
+                {/* Server picker: one compact row per server in a list that scrolls on its own, so 5 or 500 servers fit the same space */}
+                <nav aria-label="Servers" className="min-w-0 lg:sticky lg:top-6">
+                    <div className="flex flex-col overflow-hidden rounded-2xl bg-white/[0.02] ring-1 ring-white/[0.08] lg:max-h-[calc(100vh-3rem)]">
+                        {showControls && (
+                            <div className="space-y-2.5 border-b border-white/[0.07] p-3">
+                                <div className="relative">
+                                    <MagnifyingGlass weight="light" aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-muted-foreground" />
+                                    <Input type="search" aria-label="Find a server" placeholder="Find a server" value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-full pl-10" />
+                                </div>
+                                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show servers by status">
+                                    {[
+                                        ['all', 'All'],
+                                        ['down', 'Down'],
+                                        ['up', 'Up'],
+                                        ['unknown', 'Pending'],
+                                    ]
+                                        .filter(([key]) => key === 'all' || counts[key] > 0 || statusFilter === key)
+                                        .map(([key, label]) => (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                aria-pressed={statusFilter === key}
+                                                onClick={() => setStatusFilter(key)}
+                                                className={cn(
+                                                    'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium tabular-nums ring-1 transition-colors duration-300 ease-fluid',
+                                                    statusFilter === key
+                                                        ? 'bg-primary/15 text-foreground ring-primary/50'
+                                                        : 'text-muted-foreground ring-white/[0.1] hover:bg-white/[0.06] hover:text-foreground',
+                                                    key === 'down' && counts.down > 0 && statusFilter !== key && 'text-destructive'
+                                                )}
+                                            >
+                                                {label}
+                                                <span className="font-mono">{counts[key]}</span>
+                                            </button>
+                                        ))}
+                                </div>
+                            </div>
+                        )}
+                        <ul ref={listRef} onKeyDown={handleListKeys} className="relative max-h-80 space-y-0.5 overflow-y-auto overscroll-contain p-1.5 lg:max-h-none lg:min-h-0 lg:flex-1">
+                            {listed.map((server) => {
+                                const active = s && idOf(server) === idOf(s);
+                                const status = statusOf(server);
+                                return (
+                                    <li key={idOf(server)} data-id={idOf(server)}>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleServerSelect(server)}
+                                            aria-current={active ? 'true' : undefined}
+                                            title={displayUrl(server.url)}
+                                            className={cn(
+                                                'flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left transition-colors duration-300 ease-fluid',
+                                                active ? 'bg-primary/10 ring-1 ring-primary/50' : 'hover:bg-white/[0.06]'
+                                            )}
+                                        >
+                                            <StatusDot status={server.status} />
+                                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{server.name}</span>
+                                            <span className={cn('shrink-0 font-mono text-xs tabular-nums', status === 'down' ? 'text-destructive' : 'text-muted-foreground')}>
+                                                {status === 'down' ? 'Down' : server.responseTime ? `${server.responseTime} ms` : '—'}
+                                            </span>
+                                            <span className="sr-only">{status === 'up' ? 'Operational' : status === 'down' ? 'Down' : 'Pending'}</span>
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                            {listed.length === 0 && (
+                                <li className="space-y-2 px-2.5 py-3 text-sm text-muted-foreground">
+                                    <p>No servers match.</p>
+                                    <Button size="sm" variant="outline" onClick={clearFilters}>Clear filters</Button>
                                 </li>
-                            );
-                        })}
-                        {listed.length === 0 && <li className="px-1 text-sm text-muted-foreground">No server matches “{query}”.</li>}
-                    </ul>
+                            )}
+                        </ul>
+                        {showControls && (
+                            <div className="flex items-center justify-between gap-3 border-t border-white/[0.07] px-3 py-2 text-xs text-muted-foreground">
+                                <span role="status" aria-live="polite">
+                                    {filtered ? `${listed.length} of ${servers.length}` : plural(servers.length, 'server')}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSortMode(sortMode === 'problems' ? 'name' : 'problems')}
+                                    className="rounded-md px-1.5 py-1 transition-colors duration-300 ease-fluid hover:bg-white/[0.06] hover:text-foreground"
+                                >
+                                    Sort: {sortMode === 'problems' ? 'problems first' : 'A–Z'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </nav>
 
                 {s && (

@@ -26,6 +26,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Reveal } from '@/components/ui/reveal';
 import { cn } from '@/lib/utils';
+import { countServers } from '@/lib/servers';
 
 const STATUS_BADGE = {
     trial: { label: 'Trial', variant: 'warning' },
@@ -122,8 +123,8 @@ function SubscriptionContent() {
     useEffect(() => {
         if (!user || admin) return;
         let live = true;
-        apiRequest('/api/servers', { method: 'GET' })
-            .then((res) => live && setServerCount(res.data?.servers?.length ?? 0))
+        countServers(apiRequest)
+            .then((count) => live && setServerCount(count))
             .catch(() => live && setServerCount(null));
         return () => { live = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps

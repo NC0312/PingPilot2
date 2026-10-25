@@ -17,6 +17,7 @@ import { Alert } from '@/components/ui/alert';
 import { Reveal } from '@/components/ui/reveal';
 import { displayUrl } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { countServers } from '@/lib/servers';
 
 const slots = (n) => `${n} ${n === 1 ? 'server' : 'servers'}`;
 
@@ -105,11 +106,9 @@ export default function NewServerPage() {
 
                 // Count current servers
                 try {
-                    const response = await apiRequest('/api/servers', { method: 'GET' });
+                    const count = await countServers(apiRequest);
 
-                    if (response.status === 'success' && response.data.servers) {
-                        setServerCount(response.data.servers.length);
-                    }
+                    setServerCount(count);
                 } catch (err) {
                     console.error('Error fetching servers:', err);
                 }

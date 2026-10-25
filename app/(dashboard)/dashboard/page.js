@@ -25,6 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge, StatusDot } from '@/components/ui/status';
 import { Reveal } from '@/components/ui/reveal';
 import { timeAgo, durationSince, displayUrl } from '@/lib/time';
+import { fetchAllServers } from '@/lib/servers';
 
 const idOf = (s) => s._id || s.id;
 const STATUS_RANK = { down: 0, unknown: 1, up: 2 };
@@ -97,8 +98,7 @@ export default function DashboardPage() {
     setError(null);
 
     try {
-      const response = await apiRequest(admin ? '/api/servers?admin=true' : '/api/servers', { method: 'GET' });
-      const list = response.data.servers;
+      const list = await fetchAllServers(apiRequest, { admin });
 
       if (admin && list.length > 0) {
         try {
