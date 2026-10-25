@@ -34,6 +34,7 @@ import { Reveal } from '@/components/ui/reveal';
 import TrialNotice from '@/app/components/TrialNotice';
 import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
 import CheckDetail from '@/app/components/Servers/CheckDetail';
+import HostMetricsPanel from '@/app/components/Servers/HostMetrics/HostMetricsPanel';
 import { displayUrl, toHref, timeAgo, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { channelLabel } from '@/lib/chatWebhook';
@@ -1099,6 +1100,11 @@ export default function EnhancedServersPage() {
                                 )}
                                 {hasChecks && <p className="mt-4 text-xs text-muted-foreground">The chart only shows checks inside the monitoring schedule.</p>}
                             </Panel>
+                        </Reveal>
+
+                        {/* Host metrics: CPU, memory, disk and network from the agent on the server */}
+                        <Reveal delay={140}>
+                            <HostMetricsPanel key={idOf(s)} server={s} apiRequest={apiRequest} user={user} />
                         </Reveal>
 
                         {/* Incidents */}
