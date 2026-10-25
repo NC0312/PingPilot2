@@ -10,6 +10,7 @@ const NAV_LINKS = [
     { label: 'How it works', href: '/#how' },
     { label: 'Pricing', href: '/pricing' },
     { label: 'Android app', href: '/android-app' },
+    { label: 'Docs', href: '/docs' },
 ]
 
 const Navbar = () => {

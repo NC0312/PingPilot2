@@ -1,5 +1,6 @@
 import { SITE_URL } from '@/lib/site';
 import { POSTS } from '@/lib/posts';
+import { DOCS } from '@/lib/docs';
 
 const PAGES = [
     { path: '/', priority: 1, changeFrequency: 'weekly' },
@@ -9,6 +10,8 @@ const PAGES = [
     { path: '/android-app', priority: 0.7, changeFrequency: 'monthly' },
     { path: '/alternatives/uptimerobot', priority: 0.7, changeFrequency: 'monthly' },
     { path: '/alternatives/pingdom', priority: 0.7, changeFrequency: 'monthly' },
+    { path: '/docs', priority: 0.7, changeFrequency: 'monthly' },
+    ...DOCS.map((d) => ({ path: `/docs/${d.slug}`, priority: 0.6, changeFrequency: 'monthly' })),
     { path: '/blog', priority: 0.6, changeFrequency: 'weekly' },
     ...POSTS.map((p) => ({ path: `/blog/${p.slug}`, priority: 0.6, changeFrequency: 'monthly', lastModified: p.date })),
     { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' },

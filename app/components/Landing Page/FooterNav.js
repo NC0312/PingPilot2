@@ -18,6 +18,7 @@ export default function FooterNav() {
                     <li><Link href="/#features" className={linkClass}>Features</Link></li>
                     <li><Link href="/pricing" className={linkClass}>Pricing</Link></li>
                     <li><Link href="/android-app" className={linkClass}>Android app</Link></li>
+                    <li><Link href="/docs" className={linkClass}>Documentation</Link></li>
                 </ul>
             </div>
             <div className="space-y-3">
