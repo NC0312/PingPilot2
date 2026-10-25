@@ -47,7 +47,7 @@ import { countByStatus, filterAndSort, statusOf } from '@/lib/server-list';
 const SERVER_TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'host', label: 'Host metrics' },
-    { id: 'setup', label: 'How it’s monitored' },
+    { id: 'setup', label: 'Monitoring' },
 ];
 const tabFromUrl = () => {
     const wanted = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;

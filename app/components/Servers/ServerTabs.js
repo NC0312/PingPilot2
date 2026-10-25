@@ -23,29 +23,33 @@ export default function ServerTabs({ tabs, value, onChange, className }) {
         refs.current[tabs[next].id]?.focus();
     };
 
+    // The tab row scrolls sideways on a narrow screen. overflow-y is hidden so it never grows a vertical scrollbar, and the focus ring
+    // is drawn inside the tab, since an outer ring would be clipped by that.
     return (
-        <div role="tablist" aria-label="Sections of this server" onKeyDown={onKeyDown} className={cn('flex gap-1 overflow-x-auto border-b border-white/[0.07]', className)}>
-            {tabs.map((t) => {
-                const active = t.id === value;
-                return (
-                    <button
-                        key={t.id}
-                        ref={(el) => { refs.current[t.id] = el; }}
-                        type="button"
-                        role="tab"
-                        id={tabId(t.id)}
-                        aria-selected={active}
-                        aria-controls={panelId(t.id)}
-                        tabIndex={active ? 0 : -1}
-                        onClick={() => onChange(t.id)}
-                        className={cn(
-                            '-mb-px min-h-12 shrink-0 whitespace-nowrap border-b-2 px-4 text-sm font-medium outline-none transition-colors duration-300 ease-fluid focus-visible:ring-2 focus-visible:ring-ring sm:min-h-11',
-                            active ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
-                        )}>
-                        {t.label}
-                    </button>
-                );
-            })}
+        <div className={cn('border-b border-white/[0.07]', className)}>
+            <div role="tablist" aria-label="Sections of this server" onKeyDown={onKeyDown} className="-mb-px flex gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {tabs.map((t) => {
+                    const active = t.id === value;
+                    return (
+                        <button
+                            key={t.id}
+                            ref={(el) => { refs.current[t.id] = el; }}
+                            type="button"
+                            role="tab"
+                            id={tabId(t.id)}
+                            aria-selected={active}
+                            aria-controls={panelId(t.id)}
+                            tabIndex={active ? 0 : -1}
+                            onClick={() => onChange(t.id)}
+                            className={cn(
+                                'min-h-12 shrink-0 whitespace-nowrap border-b-2 px-3 text-sm sm:px-4 font-medium outline-none transition-colors duration-300 ease-fluid focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-11',
+                                active ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'
+                            )}>
+                            {t.label}
+                        </button>
+                    );
+                })}
+            </div>
         </div>
     );
 }
