@@ -12,8 +12,8 @@ export const metadata = {
 }
 
 const FAQS = [
-    { q: 'Is there a free plan?', a: 'Yes. The free plan never expires. It covers 5 URLs checked every 5 minutes, with email alerts and Android app alerts.' },
-    { q: 'What changes between plans?', a: 'The number of URLs you can monitor and how often they are checked. Free checks every 5 minutes; Starter, Pro and Business check every minute. Starter adds webhooks, Pro adds advanced alerts and priority support, and Business adds API access.' },
+    { q: 'Is there a free plan?', a: 'Yes. The free plan never expires. It covers 5 URLs checked every 5 minutes, with email, Slack, Discord, Telegram and Android app alerts.' },
+    { q: 'What changes between plans?', a: 'The number of URLs you can monitor and how often they are checked. Free checks every 5 minutes; Starter, Pro and Business check every minute. Starter adds any webhook, Pro adds advanced alerts and priority support, and Business adds API access.' },
     { q: 'Do yearly plans cost less?', a: 'Yes. Yearly billing saves 17% compared with paying monthly.' },
     { q: 'Can I monitor more than 100 URLs?', a: 'Yes. Contact support for a custom plan.' },
 ]

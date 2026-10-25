@@ -35,6 +35,7 @@ import TrialNotice from '@/app/components/TrialNotice';
 import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
 import { displayUrl, toHref, timeAgo, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { channelLabel } from '@/lib/chatWebhook';
 import { fetchAllServers } from '@/lib/servers';
 import { countByStatus, filterAndSort, statusOf } from '@/lib/server-list';
 
@@ -1130,7 +1131,7 @@ export default function EnhancedServersPage() {
                                             <ul className="space-y-1.5">
                                                 {[
                                                     ['Email', alerts?.email],
-                                                    ['Webhook', !!alerts?.webhookUrl],
+                                                    [channelLabel(alerts?.webhookUrl), !!alerts?.webhookUrl],
                                                 ].map(([label, on]) => (
                                                     <li key={label} className="flex items-center gap-2">
                                                         {on ? <Check weight="bold" className="size-4 text-success" /> : <Minus weight="bold" className="size-4 text-muted-foreground/60" />}

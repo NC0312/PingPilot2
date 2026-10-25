@@ -12,7 +12,7 @@ export const metadata = {
 
 const FEATURES = [
     { title: 'Checks as often as every minute', body: 'Starter, Pro and Business plans check every minute and the free plan every five. A site that goes down is noticed within one interval.' },
-    { title: 'Instant downtime alerts', body: 'A failed check emails the addresses you choose straight away, and we email again when the site recovers. Starter and above add webhooks so alerts can reach your own tools.' },
+    { title: 'Instant downtime alerts', body: 'A failed check emails the addresses you choose straight away, and we email again when the site recovers. Slack, Discord and Telegram alerts are free on every plan, and Starter and above add any webhook so alerts can reach your own tools.' },
     { title: 'Response time tracking', body: 'Every check records how long your site took to answer. Set a threshold and get told when it is slow, before it is down.' },
     { title: 'Full incident history', body: 'See when each outage started, what the server returned and how long it lasted. Paid plans keep the history for reporting.' },
     { title: 'Alert hours and days', body: 'Choose the hours and weekdays when alerts may be sent, so a planned maintenance window does not wake anyone up.' },
@@ -22,7 +22,7 @@ const FEATURES = [
 const FAQS = [
     { q: 'What is website uptime monitoring?', a: 'Website uptime monitoring sends a request to your site on a fixed schedule and records whether it answered and how fast. When a check fails, you are alerted so you can fix the problem before more visitors are affected.' },
     { q: 'How often does Ping Pilott check my website?', a: 'The free plan checks every 5 minutes. Starter, Pro and Business check every minute.' },
-    { q: 'How will I be told my website is down?', a: 'By email on every plan, to as many addresses as you add. Starter and higher plans can also send alerts to a webhook URL.' },
+    { q: 'How will I be told my website is down?', a: 'By email on every plan, to as many addresses as you add, and to Slack, Discord or Telegram. Starter and higher plans can also send alerts to any webhook URL.' },
     { q: 'Can I try it for free?', a: 'Yes. The free plan never expires and covers 5 URLs checked every 5 minutes. No plan is needed to start.' },
     { q: 'What is a good uptime percentage?', a: '99.9% uptime allows about 8 hours 46 minutes of downtime a year, or roughly 43 minutes a month. 99.99% allows under an hour a year. Checking every minute lets you measure against targets like these.' },
 ]

@@ -21,7 +21,7 @@ function buildPlans(yearly) {
             features: [
                 { included: true, text: '5 URLs monitored' },
                 { included: true, text: '5-minute check interval' },
-                { included: true, text: 'Email alerts' },
+                { included: true, text: 'Email, Slack, Discord and Telegram alerts' },
                 { included: false, text: '1-minute checks' },
             ],
             buttonText: 'Start free',
@@ -35,7 +35,7 @@ function buildPlans(yearly) {
             features: [
                 { included: true, text: '20 URLs monitored' },
                 { included: true, text: '1-minute check interval' },
-                { included: true, text: 'Email alerts and webhooks' },
+                { included: true, text: 'Chat alerts and any webhook' },
                 { included: true, text: 'Historical reporting' },
             ],
             buttonText: 'Choose Starter',
@@ -91,7 +91,7 @@ export default function PricingSection({ compact = false }) {
                             Pay for the URLs you watch.
                         </h2>
                         <p className="text-[15px] leading-relaxed text-muted-foreground">
-                            Every plan includes uptime checks and email alerts, and the free plan never expires. Upgrade for more monitors and 1-minute checks.
+                            Every plan includes uptime checks and alerts by email, Slack, Discord and Telegram, and the free plan never expires. Upgrade for more monitors and 1-minute checks.
                         </p>
                     </Reveal>
 

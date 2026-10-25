@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
+import { CHAT_LABELS, channelLabel, detectChat } from '@/lib/chatWebhook';
 
 const selectClass =
     'h-11 w-full min-w-0 rounded-xl bg-white/[0.035] px-3 text-sm text-foreground ring-1 ring-white/10 outline-none transition-[box-shadow,background-color] duration-300 ease-fluid hover:ring-white/20 focus-visible:ring-2 focus-visible:ring-ring [&>option]:bg-popover [&>option]:text-popover-foreground';
@@ -490,9 +491,11 @@ export const EmailListManager = ({ emails, onAdd, onRemove, onPendingChange, fla
     />
 );
 
-export const WebhookInputManager = ({ webhookUrl, onChange, disabled, onValidityChange }) => {
+// chatOnly: the plan has no webhooks, but Slack, Discord and Telegram addresses work on every plan
+export const WebhookInputManager = ({ webhookUrl, onChange, disabled, onValidityChange, chatOnly = false }) => {
     const [url, setUrl] = useState(webhookUrl || '');
     const [error, setError] = useState('');
+    const chat = detectChat(url);
 
     useEffect(() => {
         setUrl(webhookUrl || '');
@@ -512,7 +515,10 @@ export const WebhookInputManager = ({ webhookUrl, onChange, disabled, onValidity
         setUrl(newValue);
 
         if (newValue && !validateUrl(newValue)) {
-            setError('Enter a full URL, for example https://example.com/webhook.');
+            setError('Enter a full URL, for example https://hooks.slack.com/services/...');
+            onValidityChange?.(false);
+        } else if (newValue && chatOnly && !detectChat(newValue)) {
+            setError('Your plan sends alerts to Slack, Discord and Telegram only. Other webhooks need a paid plan.');
             onValidityChange?.(false);
         } else {
             setError('');
@@ -523,21 +529,31 @@ export const WebhookInputManager = ({ webhookUrl, onChange, disabled, onValidity
 
     return (
         <div>
-            <FieldLabel htmlFor="webhook-url">Webhook URL</FieldLabel>
+            <FieldLabel htmlFor="webhook-url">Chat or webhook URL</FieldLabel>
             <Input
                 id="webhook-url"
                 value={url}
                 onChange={handleChange}
                 disabled={disabled}
-                placeholder="https://your-app.com/webhook"
+                placeholder="https://hooks.slack.com/services/..."
                 aria-invalid={!!error}
                 aria-describedby="webhook-url-msg"
                 className="font-mono text-[13px]"
                 spellCheck={false}
             />
             <p id="webhook-url-msg" role={error ? 'alert' : undefined} className={cn('mt-2 text-[13px]', error ? 'text-destructive' : 'text-muted-foreground')}>
-                {error || 'We send a POST request here when this server changes state.'}
+                {error || (chat
+                    ? `${CHAT_LABELS[chat]} detected. Alerts arrive as ${CHAT_LABELS[chat]} messages.`
+                    : 'Slack, Discord or Telegram address, or your own webhook. We send a POST request here when this server changes state.')}
             </p>
+            <details className="mt-3 text-[13px] text-muted-foreground">
+                <summary className="cursor-pointer text-foreground/80">Where do I get this address?</summary>
+                <ul className="mt-2 list-disc space-y-1.5 pl-5">
+                    <li><span className="text-foreground/80">Slack:</span> create an incoming webhook for your workspace and paste its URL (it starts with hooks.slack.com).</li>
+                    <li><span className="text-foreground/80">Discord:</span> in the channel&apos;s settings open Integrations, then Webhooks, and copy the webhook URL.</li>
+                    <li><span className="text-foreground/80">Telegram:</span> create a bot with @BotFather, add it to your chat, then use https://api.telegram.org/bot&lt;token&gt;/sendMessage?chat_id=&lt;chat id&gt;</li>
+                </ul>
+            </details>
         </div>
     );
 };
@@ -712,7 +728,7 @@ function SetupSummary({ data, issues, className }) {
 
     const channels = [];
     if (data.alertPreferences.email) channels.push(data.emails.length ? `Email, ${data.emails.length}` : 'Email, no address');
-    if (hasWebhook) channels.push('Webhook');
+    if (hasWebhook) channels.push(channelLabel(data.webhookUrl));
 
     return (
         <aside aria-label="Summary of your setup" className={cn('bezel-sm', className)}>
@@ -978,22 +994,22 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabe
 
                                     <ChannelCard
                                         icon={WebhooksLogo}
-                                        title="Webhook"
-                                        badge={webhookLocked ? <Badge variant="default"><Lock weight="light" />Paid plans</Badge> : null}
-                                        description={webhookLocked ? 'Send alerts to your own app or chat tool.' : 'Send alerts to your own app or chat tool. Leave empty to skip.'}
+                                        title="Chat and webhooks"
+                                        badge={webhookLocked ? <Badge variant="secondary">Chat free, webhooks paid</Badge> : null}
+                                        description={webhookLocked ? 'Slack, Discord and Telegram on every plan. Other webhooks come with paid plans.' : 'Slack, Discord, Telegram or your own app. Leave empty to skip.'}
                                         always
                                     >
-                                        {webhookLocked ? (
-                                            <p className="text-[13px] text-muted-foreground">
-                                                Webhooks come with every paid plan.{' '}
+                                        <WebhookInputManager
+                                            webhookUrl={formData.webhookUrl}
+                                            onChange={(url) => handleChange('webhookUrl', url)}
+                                            onValidityChange={setWebhookValid}
+                                            chatOnly={webhookLocked}
+                                        />
+                                        {webhookLocked && (
+                                            <p className="mt-3 text-[13px] text-muted-foreground">
+                                                Need your own webhook?{' '}
                                                 <Link href="/subscription" className="text-primary underline-offset-4 hover:underline">Compare plans</Link>
                                             </p>
-                                        ) : (
-                                            <WebhookInputManager
-                                                webhookUrl={formData.webhookUrl}
-                                                onChange={(url) => handleChange('webhookUrl', url)}
-                                                onValidityChange={setWebhookValid}
-                                            />
                                         )}
                                     </ChannelCard>
                                 </div>

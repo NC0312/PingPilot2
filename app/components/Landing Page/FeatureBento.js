@@ -63,7 +63,7 @@ export default function FeatureBento() {
                             Told the moment it fails.
                         </h3>
                         <p className="text-[15px] leading-relaxed text-muted-foreground">
-                            Email alerts on every plan, webhooks from Starter up. You hear about it before your customers write in.
+                            Email, Slack, Discord and Telegram alerts on every plan, any webhook from Starter up. You hear about it before your customers write in.
                         </p>
                     </div>
                     <div className="mt-auto rounded-2xl bg-black/20 p-4 ring-1 ring-white/[0.05]">
