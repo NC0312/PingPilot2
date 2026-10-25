@@ -36,6 +36,8 @@ import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
 import { displayUrl, toHref, timeAgo, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { channelLabel } from '@/lib/chatWebhook';
+import { certStatus, hasCertificate, noCertificateText } from '@/lib/cert';
+import { describeKeyword } from '@/lib/keyword';
 import { fetchAllServers } from '@/lib/servers';
 import { countByStatus, filterAndSort, statusOf } from '@/lib/server-list';
 
@@ -164,6 +166,38 @@ function Fact({ label, children }) {
             <dt className="text-xs text-muted-foreground">{label}</dt>
             <dd className="mt-1 text-sm">{children}</dd>
         </div>
+    );
+}
+
+// The site's security certificate: when it expires, as the last check saw it (the backend warns by email and webhook too)
+function CertificateFact({ server }) {
+    if (!hasCertificate(server.type)) return null;
+    const cert = certStatus(server.certExpiresAt);
+    return (
+        <Fact label="Security certificate">
+            {cert ? (
+                <>
+                    <span className={cn(cert.tone === 'expired' && 'text-destructive', cert.tone === 'soon' && 'text-warning')}>{cert.label}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {cert.tone === 'expired' ? 'Expired' : 'Valid until'} {formatTimestamp(cert.expiresAt, null, 'D MMM YYYY')}
+                    </span>
+                </>
+            ) : (
+                <span className="text-muted-foreground">{noCertificateText(server.url)}</span>
+            )}
+        </Fact>
+    );
+}
+
+// A certificate that is about to expire or has expired, where it cannot be missed: visitors' browsers warn about it
+function CertificateAlert({ server }) {
+    if (!hasCertificate(server.type)) return null;
+    const cert = certStatus(server.certExpiresAt);
+    if (!cert || cert.tone === 'ok') return null;
+    return (
+        <Alert tone={cert.tone === 'expired' ? 'error' : 'warning'} title={cert.tone === 'expired' ? 'The security certificate has expired' : `The security certificate ${cert.label.toLowerCase()}`}>
+            Visitors&apos; browsers show a security warning once it expires. Renew it, or fix automatic renewal, and reload the web server.
+        </Alert>
     );
 }
 
@@ -981,6 +1015,8 @@ export default function EnhancedServersPage() {
                                     </Alert>
                                 )}
 
+                                <CertificateAlert server={s} />
+
                                 <section aria-labelledby="strip-heading">
                                     <div className="mb-3 flex items-baseline justify-between gap-3">
                                         <h3 id="strip-heading" className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Last 24 hours</h3>
@@ -1162,6 +1198,10 @@ export default function EnhancedServersPage() {
                                             )}
                                         </Fact>
                                         <Fact label="Type">{TYPE_LABEL[s.type] || 'Website'}</Fact>
+                                        <CertificateFact server={s} />
+                                        {s.monitoring?.keyword?.text && (
+                                            <Fact label="Page check">{describeKeyword(s.monitoring.keyword)}</Fact>
+                                        )}
                                         <Fact label="Added">{formatTimestamp(s.uploadedAt || s.createdAt, null, 'D MMM YYYY')}</Fact>
                                     </dl>
                                 </div>

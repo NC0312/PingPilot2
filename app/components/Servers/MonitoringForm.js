@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import { CHAT_LABELS, channelLabel, detectChat } from '@/lib/chatWebhook';
+import { MAX_KEYWORD_LENGTH, describeKeyword, emptyKeyword, supportsKeyword } from '@/lib/keyword';
 
 const selectClass =
     'h-11 w-full min-w-0 rounded-xl bg-white/[0.035] px-3 text-sm text-foreground ring-1 ring-white/10 outline-none transition-[box-shadow,background-color] duration-300 ease-fluid hover:ring-white/20 focus-visible:ring-2 focus-visible:ring-ring [&>option]:bg-popover [&>option]:text-popover-foreground';
@@ -684,6 +685,40 @@ export const ResponseTimeThresholdInput = ({ value, onChange }) => {
     );
 };
 
+// ─────────────────────────── Page content check ───────────────────────────
+
+// A site can answer 200 and still be broken (a maintenance page, an error drawn inside a normal page). This asks for the
+// page and looks for a piece of text in it. Leave the text empty for no check.
+export const KeywordField = ({ value, onChange }) => (
+    <fieldset>
+        <legend className="mb-2 block text-sm font-medium text-foreground">Page content check <span className="font-normal text-muted-foreground">(optional)</span></legend>
+        <div className="flex flex-col gap-2 sm:flex-row">
+            <select
+                aria-label="What the page must do with this text"
+                value={value.mode}
+                onChange={(e) => onChange({ ...value, mode: e.target.value })}
+                className={cn(selectClass, 'sm:w-48 sm:shrink-0')}
+            >
+                <option value="present">Page must contain</option>
+                <option value="absent">Page must not contain</option>
+            </select>
+            <Input
+                id="keyword-text"
+                aria-label="Text to look for"
+                value={value.text}
+                maxLength={MAX_KEYWORD_LENGTH}
+                onChange={(e) => onChange({ ...value, text: e.target.value })}
+                placeholder={value.mode === 'absent' ? 'Under maintenance' : 'Welcome back'}
+                spellCheck={false}
+                autoComplete="off"
+            />
+        </div>
+        <p className="mt-2.5 text-[13px] text-muted-foreground">
+            The server counts as down when this is not true, even if it answers. Letter case is ignored, and only the first 512 KB of the page is read.
+        </p>
+    </fieldset>
+);
+
 // ─────────────────────────── Live summary ───────────────────────────
 
 // One bar on a 24 h axis. The window is a clipped layer so it slides and resizes with a transform-free, compositor-friendly clip-path.
@@ -766,6 +801,7 @@ function SetupSummary({ data, issues, className }) {
                         )}
                     </SummaryRow>
                     <SummaryRow term="Slow means"><span className="font-mono tabular-nums">Over {Number(data.responseThreshold).toLocaleString()} ms</span></SummaryRow>
+                    {describeKeyword(data.keyword) && <SummaryRow term="Page check">{describeKeyword(data.keyword)}</SummaryRow>}
                 </dl>
 
                 {issues.length > 0 && (
@@ -802,9 +838,10 @@ export const getDefaultMonitoring = (user) => ({
     responseThreshold: 1000, // ms
     webhookUrl: '',
     emails: user?.email ? [user.email] : [],
+    keyword: emptyKeyword(),
 });
 
-export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabel = 'Update settings', loadingLabel = 'Saving', onBack, backLabel = 'Back', onDirtyChange, savedKey }) => {
+export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabel = 'Update settings', loadingLabel = 'Saving', onBack, backLabel = 'Back', onDirtyChange, savedKey, serverType }) => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin';
 
@@ -1017,6 +1054,9 @@ export const MonitoringForm = ({ onSave, initialData = {}, isLoading, submitLabe
 
                             <Section step={3} title="What counts as a problem" description="Down always sends an alert. These settings decide when slow does, and when you’re left in peace.">
                                 <ResponseTimeThresholdInput value={formData.responseThreshold} onChange={(value) => handleChange('responseThreshold', value)} />
+                                {supportsKeyword(serverType) && (
+                                    <KeywordField value={formData.keyword || emptyKeyword()} onChange={(value) => handleChange('keyword', value)} />
+                                )}
                                 <HoursField
                                     id="alert-range"
                                     label="Alert hours"

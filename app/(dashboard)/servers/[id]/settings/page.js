@@ -21,6 +21,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Reveal } from '@/components/ui/reveal';
 import { displayUrl, toHref, formatDateTime, timeAgo } from '@/lib/time';
 import { cn } from '@/lib/utils';
+import { keywordFromServer, keywordPayload, supportsKeyword } from '@/lib/keyword';
 
 // Deleting is not a settings section, so it sits below the tabs instead of hiding in one.
 const TABS = [
@@ -172,7 +173,8 @@ export default function ServerSettingsPage() {
                         }
                     ],
                     alerts: {
-                        enabled: updatedData.alertPreferences?.email || false,
+                        // Alerts are on when any channel is: email, or a chat or webhook address
+                        enabled: updatedData.alertPreferences?.email || !!updatedData.webhookUrl || false,
                         email: updatedData.alertPreferences?.email || false,
                         phone: false, // phone-call alerts were removed; the field stays so the API payload shape is unchanged
                         webhookUrl: updatedData.webhookUrl || '',
@@ -186,6 +188,9 @@ export default function ServerSettingsPage() {
                 contactEmails: updatedData.emails || [],
                 contactPhones: []
             };
+
+            // The page content check: null takes a saved one away, and nothing is sent for a TCP or database server
+            if (supportsKeyword(server.type)) data.monitoring.keyword = keywordPayload(updatedData.keyword);
 
             const response = await apiRequest(`/api/servers/${serverId}`, {
                 method: 'PATCH',
@@ -307,7 +312,8 @@ export default function ServerSettingsPage() {
             timezone: server.timezone,
             responseThreshold: server.monitoring?.alerts?.responseThreshold || 1000,
             webhookUrl: server.monitoring?.alerts?.webhookUrl || '',
-            emails: server.contactEmails || []
+            emails: server.contactEmails || [],
+            keyword: keywordFromServer(server.monitoring)
         };
     };
 
@@ -513,6 +519,7 @@ export default function ServerSettingsPage() {
                 <div role="tabpanel" id="panel-monitoring" aria-labelledby="tab-monitoring" tabIndex={0} hidden={activeTab !== 'monitoring'} className="outline-none">
                     <Reveal>
                         <MonitoringForm
+                            serverType={server.type}
                             onSave={handleMonitoringUpdate}
                             initialData={getMonitoringFormData()}
                             isLoading={saving}

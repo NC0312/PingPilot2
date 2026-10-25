@@ -18,6 +18,7 @@ import { Reveal } from '@/components/ui/reveal';
 import { displayUrl } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { countServers } from '@/lib/servers';
+import { keywordPayload, supportsKeyword } from '@/lib/keyword';
 
 const slots = (n) => `${n} ${n === 1 ? 'server' : 'servers'}`;
 
@@ -181,7 +182,9 @@ export default function NewServerPage() {
                         }
                     ],
                     alerts: {
-                        enabled: monitoringFormData.alertPreferences?.email || false,
+                        // Alerts are on when any channel is: email, or a chat or webhook address. (Email alone used to decide, so a
+                        // server alerting only to Slack or a webhook never sent anything.)
+                        enabled: monitoringFormData.alertPreferences?.email || !!monitoringFormData.webhookUrl || false,
                         email: monitoringFormData.alertPreferences?.email || false,
                         phone: false, // phone-call alerts were removed; the field stays so the API payload shape is unchanged
                         webhookUrl: monitoringFormData.webhookUrl || '',
@@ -195,6 +198,10 @@ export default function NewServerPage() {
                 contactEmails: monitoringFormData.emails || [],
                 contactPhones: [],
             };
+
+            // A page content check only for websites and APIs, and only when the text is filled in
+            const keyword = supportsKeyword(payload.type) ? keywordPayload(monitoringFormData.keyword, { clearable: false }) : undefined;
+            if (keyword) payload.monitoring.keyword = keyword;
 
             const response = await apiRequest('/api/servers', {
                 method: 'POST',
@@ -419,6 +426,7 @@ export default function NewServerPage() {
                                     {customize ? (
                                         <Reveal>
                                             <MonitoringForm
+                                                serverType={serverData?.type || 'website'}
                                                 onSave={handleMonitoringFormSubmit}
                                                 isLoading={loading}
                                                 initialData={monitoringData || defaultMonitoring}
