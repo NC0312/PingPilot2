@@ -79,10 +79,12 @@ export function Section({ id, eyebrow, title, children }) {
     return (
         <section id={id} className="px-4 py-16 sm:px-8 md:py-24">
             <div className="mx-auto max-w-4xl">
-                <div className="mb-10 space-y-4">
-                    {eyebrow && <span className="eyebrow">{eyebrow}</span>}
-                    <h2 className="font-display text-3xl font-medium leading-[1.08] tracking-tight md:text-4xl">{title}</h2>
-                </div>
+                {title && (
+                    <div className="mb-10 space-y-4">
+                        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+                        <h2 className="font-display text-3xl font-medium leading-[1.08] tracking-tight md:text-4xl">{title}</h2>
+                    </div>
+                )}
                 {children}
             </div>
         </section>

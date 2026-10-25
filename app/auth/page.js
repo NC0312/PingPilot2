@@ -87,7 +87,7 @@ function AuthForm() {
         formState: { errors: registerErrors },
         watch
     } = useForm({
-        defaultValues: { name: '', email: '', password: '', confirmPassword: '' }
+        defaultValues: { name: '', email: '', password: '', confirmPassword: '', consent: false }
     });
 
     const passwordValue = watch('password', '');
@@ -337,6 +337,24 @@ function AuthForm() {
                                 })}
                             />
                         </Field>
+
+                        <div className="space-y-1.5">
+                            <label className="flex items-start gap-3 text-sm leading-relaxed text-muted-foreground">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1 size-4 shrink-0 accent-[var(--primary)]"
+                                    aria-invalid={registerErrors.consent ? 'true' : undefined}
+                                    {...registerRegister('consent', { required: 'Tick this box to create your account' })}
+                                />
+                                <span>
+                                    I am 18 or older, and I agree to the{' '}
+                                    <Link href="/terms" target="_blank" className="text-foreground underline-offset-4 hover:underline">Terms of Service</Link>
+                                    {' '}and consent to my personal data being processed as described in the{' '}
+                                    <Link href="/privacy" target="_blank" className="text-foreground underline-offset-4 hover:underline">Privacy Policy</Link>.
+                                </span>
+                            </label>
+                            {registerErrors.consent && <p role="alert" className="text-[13px] text-destructive">{registerErrors.consent.message}</p>}
+                        </div>
 
                         <SubmitButton loading={loading} loadingText="Creating account">Create account</SubmitButton>
                     </form>
