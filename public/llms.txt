@@ -1,0 +1,29 @@
+# Ping Pilott
+
+> Ping Pilott is an uptime monitor for websites, APIs, TCP ports and databases. It checks them on a schedule from outside your network, alerts you when one stops answering, shows which step of the check failed, publishes public status pages, and (with an optional agent) reports a server's CPU, memory and disk. The free plan never expires.
+
+## Product
+- [Website uptime monitoring](/website-uptime-monitoring): checks as often as every minute, alerts by email, Slack, Discord, Telegram and webhook, response-time tracking, page content checks, certificate expiry alerts, incident history.
+- [Server monitoring](/server-monitoring): website, API, TCP port and database checks, with failure diagnosis.
+- [CPU, memory and disk monitoring](/server-resource-monitoring): the host agent. Starter 3 servers, Pro 15, Business 60.
+- [Public status page](/public-status-page): 1 page on Free and Starter, 3 on Pro, 10 on Business.
+- [Android app](/android-app): downtime alerts on your phone. There is no iPhone app yet.
+- [Pricing](/pricing): Free $0 (5 URLs, 5-minute checks), Starter $10/month (20 URLs), Pro $29/month (60 URLs), Business $79/month (200 URLs). Yearly billing saves 17%.
+
+## Documentation
+- [Documentation index](/docs)
+- [Getting started](/docs/getting-started)
+- [Add a monitor](/docs/monitors)
+- [Alerts](/docs/alerts)
+- [Understand a failure](/docs/failures)
+- [Publish a status page](/docs/status-pages)
+- [Install the host agent](/docs/host-agent)
+- [Host alerts and limits](/docs/host-alerts)
+- [Troubleshooting](/docs/troubleshooting)
+
+## Guides
+- [Blog](/blog)
+
+## Comparisons
+- [UptimeRobot alternative](/alternatives/uptimerobot)
+- [Pingdom alternative](/alternatives/pingdom)

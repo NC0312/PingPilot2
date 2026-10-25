@@ -4,6 +4,7 @@ import DocsShell from '@/app/components/Docs/DocsShell'
 import DocBody from '@/app/components/Docs/DocBody'
 import { DOCS, getDoc, headingsOf, neighbours } from '@/lib/docs'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { pageMetadata } from '@/lib/seo'
 
 export const dynamicParams = false
 
@@ -15,12 +16,7 @@ export async function generateMetadata({ params }) {
     const doc = getDoc((await params).slug)
     if (!doc) return {}
     const path = `/docs/${doc.slug}`
-    return {
-        title: doc.title,
-        description: doc.summary,
-        alternates: { canonical: path },
-        openGraph: { url: path, title: `${doc.title} | Ping Pilott docs`, description: doc.summary },
-    }
+    return pageMetadata({ path, title: doc.title, ogTitle: `${doc.title} | Ping Pilott docs`, description: doc.summary })
 }
 
 export default async function DocPage({ params }) {
@@ -30,12 +26,22 @@ export default async function DocPage({ params }) {
     const headings = headingsOf(doc)
     const crumbs = {
         '@context': 'https://schema.org',
+        '@graph': [{
+        '@type': 'TechArticle',
+        headline: doc.title,
+        description: doc.summary,
+        url: `${SITE_URL}/docs/${doc.slug}`,
+        inLanguage: 'en',
+        author: { '@type': 'Organization', name: SITE_NAME },
+        publisher: { '@type': 'Organization', name: SITE_NAME, logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` } },
+        }, {
         '@type': 'BreadcrumbList',
         itemListElement: [
             { '@type': 'ListItem', position: 1, name: SITE_NAME, item: SITE_URL },
             { '@type': 'ListItem', position: 2, name: 'Documentation', item: `${SITE_URL}/docs` },
             { '@type': 'ListItem', position: 3, name: doc.title, item: `${SITE_URL}/docs/${doc.slug}` },
         ],
+        }],
     }
 
     return (

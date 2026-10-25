@@ -9,6 +9,7 @@ import { Brand } from '@/components/ui/brand'
 import { Button, ButtonArrow } from '@/components/ui/button'
 import { Reveal } from '@/components/ui/reveal'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { pageMetadata, faqSchema } from '@/lib/seo'
 
 const STEPS = [
     {
@@ -28,6 +29,41 @@ const STEPS = [
     },
 ]
 
+export const metadata = pageMetadata({
+    path: '/',
+    title: { absolute: 'Website Uptime Monitoring & Server Monitoring Tool | Ping Pilott' },
+    ogTitle: 'Ping Pilott: website uptime monitoring with instant downtime alerts',
+    description:
+        'Monitor website and server uptime with checks as often as every minute, instant alerts by email, Slack, Discord and Telegram, a diagnosis of why a check failed, public status pages and CPU, memory and disk metrics. Free plan, no expiry.',
+})
+
+const MORE = [
+    {
+        href: '/public-status-page',
+        title: 'Public status page',
+        body: 'Give customers a page that shows what is up, the last 30 days and recent incidents. One on every plan, up to 10 on Business.',
+    },
+    {
+        href: '/server-resource-monitoring',
+        title: 'CPU, memory and disk',
+        body: 'Install the small host agent and see whether the machine ran out of resources when a check failed. On Starter, Pro and Business.',
+    },
+    {
+        href: '/docs/failures',
+        title: 'Why it failed',
+        body: 'Each failed check shows the step that broke (DNS, connect, TLS, response, content) with the likely causes and what to check first.',
+    },
+]
+
+const FAQS = [
+    { q: 'What is Ping Pilott?', a: 'Ping Pilott is an uptime monitor for websites, APIs, TCP ports and databases. It checks them on a schedule from outside your network, alerts you when one stops answering, and records response times and every incident.' },
+    { q: 'Is there a free plan?', a: 'Yes. The free plan never expires and covers 5 URLs checked every 5 minutes, with alerts by email, Slack, Discord and Telegram, and one public status page.' },
+    { q: 'Does Ping Pilott tell me why a site is down?', a: 'It shows which step of the check failed (name lookup, connection, secure connection, response or page content) and the usual cause. Paid plans add the likely causes with evidence, a checklist of what to check, and what the server answered.' },
+    { q: 'Can I show customers a status page?', a: 'Yes. A public status page lists the monitors you choose with 30 days of history and recent incidents. Free and Starter include one page, Pro three and Business ten. Search engines are told not to list it unless you turn that on.' },
+    { q: 'Can it monitor CPU, memory and disk?', a: 'Yes, with the host agent, a small program you install on the server. It reports CPU, memory, disk and network once a minute and can alert you when they stay high. Host metrics are on Starter (3 servers), Pro (15) and Business (60).' },
+    { q: 'Is there a mobile app?', a: 'There is an Android app that sends alerts to your phone, with Check now and Snooze buttons. There is no iPhone app yet; alerts still arrive by email there.' },
+]
+
 const JSON_LD = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -38,8 +74,20 @@ const JSON_LD = {
             name: SITE_NAME,
             applicationCategory: 'DeveloperApplication',
             operatingSystem: 'Web',
-            description: 'Website and server uptime monitoring with scheduled checks, email alerts, response-time tracking and incident history.',
+            description: 'Website and server uptime monitoring with scheduled checks, alerts by email, Slack, Discord and Telegram, failure diagnosis, public status pages, host metrics and incident history.',
             url: SITE_URL,
+            featureList: [
+                'Website, API, TCP port and database monitoring',
+                'Checks as often as every minute',
+                'Alerts by email, Slack, Discord, Telegram and webhook',
+                'Response-time tracking and slow-response alerts',
+                'Failure diagnosis showing the step that failed',
+                'Page content (keyword) checks and certificate expiry alerts',
+                'Public status pages',
+                'CPU, memory and disk metrics through a host agent',
+                'Incident history',
+                'Android app',
+            ],
             offers: [
                 { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' },
                 { '@type': 'Offer', name: 'Starter', price: '10', priceCurrency: 'USD' },
@@ -47,6 +95,7 @@ const JSON_LD = {
                 { '@type': 'Offer', name: 'Business', price: '79', priceCurrency: 'USD' },
             ],
         },
+        faqSchema(FAQS),
     ],
 }
 
@@ -121,6 +170,28 @@ export default function LandingPage() {
                     </div>
                 </section>
 
+                {/* Beyond uptime checks: links to the deeper pages */}
+                <section className="px-4 py-24 sm:px-8 md:py-32">
+                    <div className="mx-auto max-w-6xl">
+                        <Reveal className="mb-12 max-w-xl space-y-5">
+                            <span className="eyebrow">More than a ping</span>
+                            <h2 className="font-display text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">
+                                Find out why, and tell your customers.
+                            </h2>
+                        </Reveal>
+                        <ul className="grid gap-5 md:grid-cols-3">
+                            {MORE.map((m, i) => (
+                                <Reveal as="li" key={m.href} delay={i * 80}>
+                                    <Link href={m.href} className="block h-full rounded-2xl bg-white/[0.03] p-7 ring-1 ring-white/[0.07] transition-colors duration-300 ease-fluid hover:bg-white/[0.06]">
+                                        <h3 className="font-display text-2xl font-medium tracking-tight">{m.title}</h3>
+                                        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{m.body}</p>
+                                    </Link>
+                                </Reveal>
+                            ))}
+                        </ul>
+                    </div>
+                </section>
+
                 {/* How it works: sticky title, stepped list */}
                 <section id="how" className="px-4 py-24 sm:px-8 md:py-32">
                     <div className="mx-auto grid max-w-6xl gap-14 md:grid-cols-[0.8fr_1.2fr] md:gap-20">
@@ -147,6 +218,23 @@ export default function LandingPage() {
                 </section>
 
                 <PricingSection />
+
+                <section id="faq" className="px-4 py-24 sm:px-8 md:py-32">
+                    <div className="mx-auto max-w-6xl">
+                        <Reveal className="mb-12 max-w-xl space-y-5">
+                            <span className="eyebrow">FAQ</span>
+                            <h2 className="font-display text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">Common questions.</h2>
+                        </Reveal>
+                        <dl className="divide-y divide-white/[0.07] border-y border-white/[0.07]">
+                            {FAQS.map((f) => (
+                                <div key={f.q} className="grid gap-3 py-7 md:grid-cols-[0.8fr_1.2fr] md:gap-10">
+                                    <dt className="font-display text-xl font-medium tracking-tight">{f.q}</dt>
+                                    <dd className="max-w-[60ch] text-[15px] leading-relaxed text-muted-foreground">{f.a}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </div>
+                </section>
 
                 {/* Closing call to action */}
                 <section className="px-4 pb-20 pt-8 sm:px-8 md:pb-28">

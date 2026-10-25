@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import MarketingPage, { Section } from '@/app/components/Marketing/MarketingPage'
 import { POSTS, getPost } from '@/lib/posts'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { pageMetadata } from '@/lib/seo'
 
 export const dynamicParams = false
 
@@ -13,12 +14,7 @@ export async function generateMetadata({ params }) {
     const post = getPost((await params).slug)
     if (!post) return {}
     const path = `/blog/${post.slug}`
-    return {
-        title: post.title,
-        description: post.description,
-        alternates: { canonical: path },
-        openGraph: { type: 'article', url: path, title: post.title, description: post.description, publishedTime: post.date },
-    }
+    return pageMetadata({ path, title: post.title, ogTitle: `${post.title} | Ping Pilott`, description: post.description, type: 'article', publishedTime: post.date })
 }
 
 function Block({ b }) {
@@ -66,7 +62,8 @@ export default async function Page({ params }) {
         headline: post.title,
         description: post.description,
         datePublished: post.date,
-        dateModified: post.date,
+        dateModified: post.updated || post.date,
+        image: `${SITE_URL}/og`,
         mainEntityOfPage: `${SITE_URL}${path}`,
         author: { '@type': 'Organization', name: SITE_NAME },
         publisher: { '@type': 'Organization', name: SITE_NAME, logo: { '@type': 'ImageObject', url: `${SITE_URL}/logo.png` } },

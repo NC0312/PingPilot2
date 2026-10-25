@@ -49,11 +49,14 @@ Method: SERP and competitor review (UptimeRobot, Better Stack, Pingdom, HetrixTo
 | URL | Primary keyword | Status |
 |---|---|---|
 | `/` | website uptime monitoring | optimised |
-| `/website-uptime-monitoring` | website uptime monitoring tool | to build |
-| `/server-monitoring` | server monitoring | to build |
-| `/pricing` (split from homepage anchor) | uptime monitoring pricing | to build |
-| `/alternatives/uptimerobot`, `/alternatives/pingdom` | X alternative | to build |
-| `/blog/*` | Tier 4 topics | to build |
+| `/website-uptime-monitoring` | website uptime monitoring tool | live |
+| `/server-monitoring` | server monitoring | live |
+| `/server-resource-monitoring` | server CPU memory disk monitoring | live (2026-10-26) |
+| `/public-status-page` | public status page / status page for website | live (2026-10-26) |
+| `/pricing` | uptime monitoring pricing | live |
+| `/alternatives/uptimerobot`, `/alternatives/pingdom` | X alternative | live |
+| `/blog/*` | Tier 4 topics | 6 guides live; add more |
+| `/docs/*` | setup, status pages, host agent | live |
 
 ## Implemented in code
 - Title, meta description, canonical, Open Graph, Twitter card (`app/layout.js`)
@@ -61,11 +64,21 @@ Method: SERP and competitor review (UptimeRobot, Better Stack, Pingdom, HetrixTo
 - Homepage copy now uses "website uptime monitoring", "server monitoring", "uptime monitor"
 - `app/robots.js` and `app/sitemap.js`; signed-in routes disallowed and sent `X-Robots-Tag: noindex` (`next.config.mjs`)
 
+## Added 2026-10-26 (SEO brought in line with the product)
+- Fixed stale claims: server monitoring no longer says there is no agent; alternatives pages no longer say there are no status pages; webhooks wording now matches the plan rules (Slack, Discord, Telegram free).
+- New pages: `/public-status-page`, `/server-resource-monitoring`, docs guide `/docs/status-pages`, three blog guides (status page, "down for others but not me", server CPU/memory/disk).
+- `lib/seo.js`: `pageMetadata()` gives every page canonical, Open Graph (with image, site name) and Twitter tags. Before, a page's own `openGraph` replaced the root one and dropped the image.
+- Removed the root canonical of `/` that every page without its own canonical inherited; `/auth` is now `noindex` and out of the sitemap.
+- `/og` draws a 1200x630 share card (the old `banner.png` is square).
+- FAQPage JSON-LD on every page with an FAQ, TechArticle on docs, MobileApplication on `/android-app`, Offer prices on `/pricing`, a feature list on the home SoftwareApplication.
+- `public/llms.txt` lists the key pages for AI search tools.
+- Home page gained a FAQ and a "more than a ping" section linking to the new pages.
+
 ## Needs you
 1. Site URL defaults to https://pingpilott.vercel.app in production; set `NEXT_PUBLIC_SITE_URL` only if you move to a custom domain.
 2. Submit the sitemap in Google Search Console (the verification file is already in `public/`).
 3. Add real social proof (reviews, customer count) before adding `aggregateRating`; do not fabricate it.
-4. Create the Tier 3 and 4 pages above; pricing and comparison pages should be separate crawlable URLs.
+4. Still open: Better Stack / Freshping alternative pages (needs verified competitor facts), `/ssl-certificate-monitoring` and `/api-monitoring` landing pages, more Tier 4 posts.
 5. Add descriptive `alt` text to `HeroPreview` / dashboard images if any are used as `<img>`.
 
 ## Measure

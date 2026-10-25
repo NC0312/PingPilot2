@@ -1,14 +1,16 @@
 import LegalPage from '@/app/components/Marketing/LegalPage'
 import { entityLabel, addressLabel, emailLabel, officerLabel, cityLabel } from '@/lib/legal'
+import { pageMetadata } from '@/lib/seo'
 
 const PATH = '/terms'
 
-export const metadata = {
+export const metadata = pageMetadata({
+    path: PATH,
     title: 'Terms of Service',
-    description: 'The terms that apply when you use Ping Pilott uptime monitoring: accounts, plans, acceptable use, alerts, liability and governing law.',
-    alternates: { canonical: PATH },
-    openGraph: { url: PATH, title: 'Terms of Service | Ping Pilott' },
-}
+    ogTitle: 'Terms of Service | Ping Pilott',
+    description:
+        'The terms that apply when you use Ping Pilott uptime monitoring: accounts, plans, acceptable use, alerts, liability and governing law.',
+})
 
 const SECTIONS = [
     {

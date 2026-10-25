@@ -1,15 +1,16 @@
 import MarketingPage, { Section, Prose } from '@/app/components/Marketing/MarketingPage'
 import ComparisonTable from '@/app/components/Marketing/ComparisonTable'
+import { pageMetadata } from '@/lib/seo'
 
 const PATH = '/alternatives/pingdom'
 
-export const metadata = {
+export const metadata = pageMetadata({
+    path: PATH,
     title: 'Pingdom Alternative for Straightforward Uptime Monitoring',
+    ogTitle: 'Pingdom alternative | Ping Pilott',
     description:
         'Comparing Ping Pilott and Pingdom: focus, plans and pricing approach. See when a simple uptime monitor is enough and when you need a larger platform.',
-    alternates: { canonical: PATH },
-    openGraph: { url: PATH, title: 'Pingdom alternative | Ping Pilott' },
-}
+})
 
 const ROWS = [
     ['Focus', 'Uptime, response time and incident history', 'Synthetic monitoring plus real user monitoring (RUM)'],
@@ -19,11 +20,14 @@ const ROWS = [
     ['Check intervals', '5 minutes free, 1 minute on paid plans', 'See Pingdom pricing page'],
     ['Real user monitoring', 'No', 'Yes, priced by pageviews'],
     ['Monitor types', 'Website, API, TCP port, database', 'Synthetic monitoring (see Pingdom docs)'],
+    ['Public status page', 'Yes: 1 on Free and Starter, 3 on Pro, 10 on Business', 'See Pingdom pricing page'],
+    ['Server CPU, memory, disk', 'Host agent on Starter and above', 'See Pingdom docs'],
 ]
 
 const FAQS = [
     { q: 'Is Ping Pilott a replacement for Pingdom?', a: 'For basic uptime and response-time monitoring, yes. Ping Pilott does not offer real user monitoring or transaction scripts, so teams that rely on those should stay with a larger platform.' },
     { q: 'How does Ping Pilott pricing compare to Pingdom?', a: 'Ping Pilott publishes three flat monthly prices, $10, $29 and $79, based on the number of URLs. Pingdom shows starting prices by tier on its site, so check its pricing page for the current figure for your size.' },
+    { q: 'Does Ping Pilott have status pages and server metrics?', a: 'Yes. It includes public status pages (one on Free and Starter, three on Pro, ten on Business) and an optional host agent for CPU, memory and disk on Starter and above.' },
     { q: 'Can I try Ping Pilott without paying?', a: 'Yes. The free plan never expires and covers 5 URLs checked every 5 minutes.' },
 ]
 

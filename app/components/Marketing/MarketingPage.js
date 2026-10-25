@@ -4,9 +4,10 @@ import SiteFooter from './SiteFooter'
 import { Button, ButtonArrow } from '@/components/ui/button'
 import { Reveal } from '@/components/ui/reveal'
 import { SITE_URL, SITE_NAME } from '@/lib/site'
+import { faqSchema } from '@/lib/seo'
 
 /** Page chrome for public SEO pages: nav, hero, JSON-LD (breadcrumb), closing CTA, footer. */
-export default function MarketingPage({ path, crumb, eyebrow, title, intro, faqs, children, cta = true }) {
+export default function MarketingPage({ path, crumb, eyebrow, title, intro, faqs, children, cta = true, schema = [] }) {
     const url = `${SITE_URL}${path}`
     const graph = [
         {
@@ -17,6 +18,8 @@ export default function MarketingPage({ path, crumb, eyebrow, title, intro, faqs
             ],
         },
     ]
+    if (faqs?.length > 0) graph.push(faqSchema(faqs))
+    graph.push(...schema)
 
     return (
         <div className="flex min-h-[100dvh] flex-col">

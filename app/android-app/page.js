@@ -1,15 +1,17 @@
 import MarketingPage, { Section, FeatureGrid, Prose } from '@/app/components/Marketing/MarketingPage'
 import AndroidDownloadPanel from '@/app/components/AndroidDownloadPanel'
+import { pageMetadata } from '@/lib/seo'
+import { SITE_URL, SITE_NAME } from '@/lib/site'
 
 const PATH = '/android-app'
 
-export const metadata = {
+export const metadata = pageMetadata({
+    path: PATH,
     title: 'Android App: Server Downtime Alerts on Your Phone',
+    ogTitle: 'Ping Pilott for Android: downtime alerts on your phone',
     description:
         'Get a notification on your Android phone the moment a website or server goes down, comes back or slows down. Check now and snooze from the notification. Works with your Ping Pilott account.',
-    alternates: { canonical: PATH },
-    openGraph: { url: PATH, title: 'Ping Pilott for Android: downtime alerts on your phone' },
-}
+})
 
 const FEATURES = [
     { title: 'Alerts that find you', body: 'The app keeps a live connection running in the background, so an alert arrives as soon as it is raised, even when the app is closed. It does not depend on Google push services.' },
@@ -29,6 +31,16 @@ const FAQS = [
     { q: 'Which account do I use?', a: 'The same one as the dashboard. The app shows and alerts on the servers in that account, and anything you change in either place appears in both.' },
 ]
 
+const SCHEMA = [{
+    '@type': 'MobileApplication',
+    name: `${SITE_NAME} for Android`,
+    operatingSystem: 'Android',
+    applicationCategory: 'UtilitiesApplication',
+    description: 'Server and website downtime alerts on your Android phone, with Check now and Snooze buttons in the notification.',
+    url: `${SITE_URL}${PATH}`,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+}]
+
 export default function Page() {
     return (
         <MarketingPage
@@ -38,6 +50,7 @@ export default function Page() {
             title="Server alerts on your phone, the moment they happen."
             intro="The Ping Pilott app for Android tells you when a website or server goes down, comes back or slows down, even when the app is closed. Sign in with your Ping Pilott account."
             faqs={FAQS}
+            schema={SCHEMA}
         >
             <Section id="download" eyebrow="Download" title="Get the app">
                 <AndroidDownloadPanel />

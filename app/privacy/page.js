@@ -1,14 +1,16 @@
 import LegalPage from '@/app/components/Marketing/LegalPage'
 import { entityLabel, addressLabel, emailLabel, officerLabel } from '@/lib/legal'
+import { pageMetadata } from '@/lib/seo'
 
 const PATH = '/privacy'
 
-export const metadata = {
+export const metadata = pageMetadata({
+    path: PATH,
     title: 'Privacy Policy',
-    description: 'How Ping Pilott collects, uses and protects your personal data under Indian law, and how to exercise your rights or raise a grievance.',
-    alternates: { canonical: PATH },
-    openGraph: { url: PATH, title: 'Privacy Policy | Ping Pilott' },
-}
+    ogTitle: 'Privacy Policy | Ping Pilott',
+    description:
+        'How Ping Pilott collects, uses and protects your personal data under Indian law, and how to exercise your rights or raise a grievance.',
+})
 
 const SECTIONS = [
     {

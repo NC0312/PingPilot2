@@ -15,6 +15,8 @@ export default function FooterNav() {
                 <ul className="space-y-3">
                     <li><Link href="/website-uptime-monitoring" className={linkClass}>Website uptime monitoring</Link></li>
                     <li><Link href="/server-monitoring" className={linkClass}>Server monitoring</Link></li>
+                    <li><Link href="/server-resource-monitoring" className={linkClass}>CPU, memory and disk</Link></li>
+                    <li><Link href="/public-status-page" className={linkClass}>Public status page</Link></li>
                     <li><Link href="/#features" className={linkClass}>Features</Link></li>
                     <li><Link href="/pricing" className={linkClass}>Pricing</Link></li>
                     <li><Link href="/android-app" className={linkClass}>Android app</Link></li>

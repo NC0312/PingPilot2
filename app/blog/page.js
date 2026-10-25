@@ -1,15 +1,17 @@
 import Link from 'next/link'
 import MarketingPage, { Section } from '@/app/components/Marketing/MarketingPage'
 import { POSTS } from '@/lib/posts'
+import { pageMetadata } from '@/lib/seo'
 
 const PATH = '/blog'
 
-export const metadata = {
+export const metadata = pageMetadata({
+    path: PATH,
     title: 'Uptime Monitoring Blog and Guides',
-    description: 'Guides on website uptime, downtime, server errors and monitoring best practice from the Ping Pilott team.',
-    alternates: { canonical: PATH },
-    openGraph: { url: PATH, title: 'Uptime monitoring blog | Ping Pilott' },
-}
+    ogTitle: 'Uptime monitoring blog | Ping Pilott',
+    description:
+        'Guides on website uptime, downtime, server errors and monitoring best practice from the Ping Pilott team.',
+})
 
 export default function Page() {
     return (
