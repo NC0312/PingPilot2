@@ -93,7 +93,7 @@ export default function CheckDetail({ source, className, collapsible = false }) 
     const detail = failureDetailOf(source);
     if (!hasMoreDetail(detail)) return null;
 
-    const { causes, checks, steps, evidence, locked } = detail;
+    const { causes, checks, steps, evidence, locked, hostNote } = detail;
 
     const body = (
         <div className={cn('space-y-6', !collapsible && className)}>
@@ -129,6 +129,8 @@ export default function CheckDetail({ source, className, collapsible = false }) 
                     </ol>
                 </section>
             )}
+
+            {hostNote && <p className="text-sm text-muted-foreground">{hostNote}</p>}
 
             {checks.length > 0 && (
                 <section aria-label="What to check" className="space-y-3">

@@ -118,3 +118,10 @@ test('a step that was never reached has no slice, and a step with no time has no
 test('no timings, or junk, is no steps', () => {
     for (const none of [null, undefined, 'x', [], {}, { dns: 'a' }]) assert.deepEqual(timingSteps(none, 'dns'), [], String(none));
 });
+
+test('the host note is kept as text, and absent when missing or junk', () => {
+    const note = 'The host looked normal when this failed (CPU 20%, memory 25%), so running out of resources is less likely.';
+    assert.equal(failureDetailOf({ diagnosis: { title: 'T', cause: 'c', action: 'a', hostNote: note }, failureDetail: { failedPhase: 'response' } }).hostNote, note);
+    assert.equal(failureDetailOf({ diagnosis: { title: 'T', cause: 'c', action: 'a' }, failureDetail: { failedPhase: 'response' } }).hostNote, null);
+    assert.equal(failureDetailOf({ diagnosis: { title: 'T', cause: 'c', action: 'a', hostNote: { x: 1 } }, failureDetail: { failedPhase: 'response' } }).hostNote, null);
+});
