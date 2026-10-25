@@ -56,6 +56,7 @@ export default function HostMetricsPanel({ server, apiRequest, user }) {
     const allowance = hostMetricsAllowance(user);
 
     const [period, setPeriod] = useState(DEFAULT_PERIOD);
+    const [chartPick, setChartPick] = useState('cpu');
     const [metrics, setMetrics] = useState(null);
     const [loading, setLoading] = useState(allowance.enabled);
     const [loadError, setLoadError] = useState(null);
@@ -153,6 +154,8 @@ export default function HostMetricsPanel({ server, apiRequest, user }) {
     const state = useMemo(() => agentState(metrics?.agent, now, timeAgo), [metrics, now]);
     const showMax = (metrics?.binSeconds ?? 0) > 0;
     const diskLines = useMemo(() => (metrics ? disksToChart(metrics.series, metrics.mounts).map((m) => ({ key: m, label: m })) : []), [metrics]);
+    const chartOptions = [{ id: 'cpu', label: 'CPU' }, { id: 'memory', label: 'Memory' }, ...(diskLines.length > 0 ? [{ id: 'disk', label: 'Disk' }] : []), { id: 'network', label: 'Network' }];
+    const chart = chartOptions.some((c) => c.id === chartPick) ? chartPick : 'cpu';
     const rows = metrics?.series ?? [];
     const diskData = useMemo(() => diskRows(rows), [rows]);
 
@@ -313,27 +316,55 @@ export default function HostMetricsPanel({ server, apiRequest, user }) {
                             </div>
                         </div>
 
-                        <div className="grid gap-x-8 gap-y-8 lg:grid-cols-2">
-                            <HostChart
-                                title="CPU" rows={rows} period={period} yMax={100} yTicks={PERCENT_TICKS} format={percent} unit="%" summaryKey="cpu"
-                                lines={[{ key: 'cpu', label: showMax ? 'Average' : 'CPU' }, ...(showMax ? [{ key: 'cpuMax', label: 'Highest', dashed: true }] : [])]}
-                            />
-                            <HostChart
-                                title="Memory" rows={rows} period={period} yMax={100} yTicks={PERCENT_TICKS} format={percent} unit="%" summaryKey="memPct"
-                                lines={[{ key: 'memPct', label: showMax ? 'Average' : 'Memory', color: 'var(--chart-2)' }, ...(showMax ? [{ key: 'memPctMax', label: 'Highest', color: 'var(--chart-2)', dashed: true }] : [])]}
-                            />
-                            {diskLines.length > 0 && (
-                                <HostChart title="Disk space used" rows={diskData} period={period} yMax={100} yTicks={PERCENT_TICKS} format={percent} unit="%" summaryKey={diskLines[0].key} lines={diskLines} />
-                            )}
-                            <HostChart
-                                title="Network" rows={rows} period={period} yWidth={70} format={formatRate} unit=" B/s" summaryKey="rxBps"
-                                lines={[{ key: 'rxBps', label: 'In' }, { key: 'txBps', label: 'Out', color: 'var(--chart-3)' }]}
-                            />
+                        {/* One chart at a time, chosen here: four stacked charts were most of the page's length */}
+                        <div role="group" aria-label="What to chart" className="flex flex-wrap gap-1">
+                            {chartOptions.map((c) => (
+                                <button
+                                    key={c.id}
+                                    type="button"
+                                    aria-pressed={chart === c.id}
+                                    onClick={() => setChartPick(c.id)}
+                                    className={cn(
+                                        'min-h-12 rounded-full px-3.5 text-sm outline-none transition-colors duration-300 ease-fluid focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8',
+                                        chart === c.id ? 'bg-white/[0.1] text-foreground ring-1 ring-white/15' : 'text-muted-foreground hover:bg-white/[0.05] hover:text-foreground'
+                                    )}>
+                                    {c.label}
+                                </button>
+                            ))}
                         </div>
 
-                        <div className="border-t border-white/[0.07] pt-6">
-                            <ProcessList procs={metrics.latest?.procs} />
-                        </div>
+                        {chart === 'cpu' && (
+                            <HostChart
+                                height={240} title="CPU" rows={rows} period={period} yMax={100} yTicks={PERCENT_TICKS} format={percent} unit="%" summaryKey="cpu"
+                                lines={[{ key: 'cpu', label: showMax ? 'Average' : 'CPU' }, ...(showMax ? [{ key: 'cpuMax', label: 'Highest', dashed: true }] : [])]}
+                            />
+                        )}
+                        {chart === 'memory' && (
+                            <HostChart
+                                height={240} title="Memory" rows={rows} period={period} yMax={100} yTicks={PERCENT_TICKS} format={percent} unit="%" summaryKey="memPct"
+                                lines={[{ key: 'memPct', label: showMax ? 'Average' : 'Memory', color: 'var(--chart-2)' }, ...(showMax ? [{ key: 'memPctMax', label: 'Highest', color: 'var(--chart-2)', dashed: true }] : [])]}
+                            />
+                        )}
+                        {chart === 'disk' && diskLines.length > 0 && (
+                            <HostChart height={240} title="Disk space used" rows={diskData} period={period} yMax={100} yTicks={PERCENT_TICKS} format={percent} unit="%" summaryKey={diskLines[0].key} lines={diskLines} />
+                        )}
+                        {chart === 'network' && (
+                            <HostChart
+                                height={240} title="Network" rows={rows} period={period} yWidth={70} format={formatRate} unit=" B/s" summaryKey="rxBps"
+                                lines={[{ key: 'rxBps', label: 'In' }, { key: 'txBps', label: 'Out', color: 'var(--chart-3)' }]}
+                            />
+                        )}
+
+                        {metrics.latest?.procs?.length > 0 && (
+                            <details className="group border-t border-white/[0.07] pt-4">
+                                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-10">
+                                    Busiest processes
+                                    <span className="text-xs font-normal text-muted-foreground group-open:hidden">Show {metrics.latest.procs.length}</span>
+                                    <span className="hidden text-xs font-normal text-muted-foreground group-open:inline">Hide</span>
+                                </summary>
+                                <div className="pt-3"><ProcessList procs={metrics.latest.procs} /></div>
+                            </details>
+                        )}
                     </>
                 )}
 

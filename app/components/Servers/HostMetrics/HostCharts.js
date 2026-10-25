@@ -37,7 +37,7 @@ function ChartTooltip({ active, payload, label, lines, format }) {
  * One chart: a title, the line(s), a legend, and a sentence for people who cannot see it.
  * @param {{ key: string, label: string, color?: string, dashed?: boolean }[]} lines
  */
-export function HostChart({ title, rows, lines, period, yMax, yTicks, yWidth = 46, format, unit, summaryKey, className }) {
+export function HostChart({ title, rows, lines, period, yMax, yTicks, yWidth = 46, format, unit, summaryKey, className, height = 160 }) {
     const summary = useMemo(() => summarise(rows, summaryKey ?? lines[0].key, title, unit, period), [rows, summaryKey, lines, title, unit, period]);
     const empty = !rows.some((r) => lines.some((l) => r[l.key] !== null && r[l.key] !== undefined));
 
@@ -55,11 +55,11 @@ export function HostChart({ title, rows, lines, period, yMax, yTicks, yWidth = 4
                 </ul>
             </div>
             {empty ? (
-                <div className="mt-3 grid h-[160px] place-items-center rounded-2xl bg-white/[0.02] text-sm text-muted-foreground ring-1 ring-white/[0.05]">No data for this period yet.</div>
+                <div style={{ height }} className="mt-3 grid place-items-center rounded-2xl bg-white/[0.02] text-sm text-muted-foreground ring-1 ring-white/[0.05]">No data for this period yet.</div>
             ) : (
-                <div role="img" aria-label={summary} className="mt-3 h-[160px]">
+                <div role="img" aria-label={summary} style={{ height }} className="mt-3">
                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={rows} margin={{ top: 6, right: 6, left: -14, bottom: 0 }}>
+                        <LineChart data={rows} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
                             <CartesianGrid vertical={false} stroke="oklch(1 0 0 / 0.06)" />
                             <XAxis
                                 dataKey="t"
@@ -173,8 +173,7 @@ export function ProcessList({ procs }) {
     if (!procs?.length) return null;
     return (
         <div>
-            <h4 className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Busiest processes</h4>
-            <div className="mt-3 overflow-x-auto">
+            <div className="overflow-x-auto">
                 <table className="w-full min-w-[320px] text-sm">
                     <caption className="sr-only">The busiest processes right now, with their CPU and memory use</caption>
                     <thead>

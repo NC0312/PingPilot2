@@ -35,6 +35,7 @@ import TrialNotice from '@/app/components/TrialNotice';
 import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
 import CheckDetail from '@/app/components/Servers/CheckDetail';
 import HostMetricsPanel from '@/app/components/Servers/HostMetrics/HostMetricsPanel';
+import ServerTabs, { panelId, tabId } from '@/app/components/Servers/ServerTabs';
 import { displayUrl, toHref, timeAgo, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { channelLabel } from '@/lib/chatWebhook';
@@ -42,6 +43,16 @@ import { certStatus, hasCertificate, noCertificateText } from '@/lib/cert';
 import { describeKeyword } from '@/lib/keyword';
 import { fetchAllServers } from '@/lib/servers';
 import { countByStatus, filterAndSort, statusOf } from '@/lib/server-list';
+
+const SERVER_TABS = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'host', label: 'Host metrics' },
+    { id: 'setup', label: 'How it’s monitored' },
+];
+const tabFromUrl = () => {
+    const wanted = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+    return SERVER_TABS.some((t) => t.id === wanted) ? wanted : 'overview';
+};
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -291,6 +302,8 @@ export default function EnhancedServersPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [selectedServer, setSelectedServer] = useState(null);
+    const [tab, setTab] = useState('overview');
+    useEffect(() => { setTab(tabFromUrl()); }, []);
     const [responseTimeData, setResponseTimeData] = useState([]);
     // True while the selected server’s history is being fetched, so "no checks yet" is not claimed before we know
     const [historyLoading, setHistoryLoading] = useState(false);
@@ -610,7 +623,14 @@ export default function EnhancedServersPage() {
         // The previous server’s history must not sit under this server’s name while the new one loads
         setResponseTimeData([]);
         fetchServerHistory(idOf(server), server);
-        window.history.replaceState(null, '', `?s=${idOf(server)}`);
+        window.history.replaceState(null, '', urlFor(idOf(server), tab));
+    };
+
+    // The link keeps both the server and the section, so a refresh or a shared link lands where you were
+    const urlFor = (id, section) => `?s=${id}${section === 'overview' ? '' : `&tab=${section}`}`;
+    const selectTab = (next) => {
+        setTab(next);
+        if (selectedServer) window.history.replaceState(null, '', urlFor(idOf(selectedServer), next));
     };
 
     // Uptime over the last N hours, or null when there is no data in that window
@@ -1042,6 +1062,11 @@ export default function EnhancedServersPage() {
                             </Panel>
                         </Reveal>
 
+                        {/* One section at a time: the page is as long as what you came for */}
+                        <ServerTabs tabs={SERVER_TABS} value={tab} onChange={selectTab} />
+
+                        {tab === 'overview' && (
+                            <div role="tabpanel" id={panelId('overview')} aria-labelledby={tabId('overview')} className="min-w-0 space-y-6">
                         {/* Uptime by window */}
                         <Reveal delay={80}>
                             <div className="bezel-sm">
@@ -1102,11 +1127,6 @@ export default function EnhancedServersPage() {
                             </Panel>
                         </Reveal>
 
-                        {/* Host metrics: CPU, memory, disk and network from the agent on the server */}
-                        <Reveal delay={140}>
-                            <HostMetricsPanel key={idOf(s)} server={s} apiRequest={apiRequest} user={user} />
-                        </Reveal>
-
                         {/* Incidents */}
                         <Reveal delay={160}>
                             <Panel>
@@ -1142,6 +1162,21 @@ export default function EnhancedServersPage() {
                             </Panel>
                         </Reveal>
 
+                            </div>
+                        )}
+
+                        {tab === 'host' && (
+                            <div role="tabpanel" id={panelId('host')} aria-labelledby={tabId('host')} className="min-w-0 space-y-6">
+                        {/* Host metrics: CPU, memory, disk and network from the agent on the server */}
+                        <Reveal delay={140}>
+                            <HostMetricsPanel key={idOf(s)} server={s} apiRequest={apiRequest} user={user} />
+                        </Reveal>
+
+                            </div>
+                        )}
+
+                        {tab === 'setup' && (
+                            <div role="tabpanel" id={panelId('setup')} aria-labelledby={tabId('setup')} className="min-w-0 space-y-6">
                         {/* How it's monitored */}
                         <Reveal delay={200}>
                             <Panel>
@@ -1212,7 +1247,8 @@ export default function EnhancedServersPage() {
                                 </div>
                                 {s.description && <p className="mt-6 border-t border-white/[0.07] pt-5 text-sm text-muted-foreground">{s.description}</p>}
                             </Panel>
-                        </Reveal>
+                        </Reveal>                            </div>
+                        )}
                     </div>
                 )}
             </div>
