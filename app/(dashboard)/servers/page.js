@@ -201,7 +201,7 @@ const getIncidents = (data, frequency, downNow) => {
 const STRIP_SLOTS = 48;
 
 // 24 hours as 48 half-hour slots: red if any check failed, green if checks passed, grey if nothing ran.
-function HistoryStrip({ data }) {
+function HistoryStrip({ data, loading = false }) {
     const span = 24 * 3600000;
     const end = Date.now();
     const start = end - span;
@@ -220,7 +220,7 @@ function HistoryStrip({ data }) {
         <div>
             <div
                 role="img"
-                aria-label={`Last 24 hours in half-hour steps: ${passed} operational, ${failed} with failed checks, ${STRIP_SLOTS - passed - failed} without checks.`}
+                aria-label={loading ? 'Loading the last 24 hours' : `Last 24 hours in half-hour steps: ${passed} operational, ${failed} with failed checks, ${STRIP_SLOTS - passed - failed} without checks.`}
                 className="flex h-10 items-stretch gap-[3px]"
             >
                 {slots.map((x, i) => (
@@ -229,6 +229,7 @@ function HistoryStrip({ data }) {
                         title={`${formatTimestamp(new Date(x.from), null, 'HH:mm')}: ${x.down ? 'failed checks' : x.up ? 'operational' : 'no checks'}`}
                         className={cn(
                             'flex-1 rounded-[3px] transition-colors duration-500 ease-fluid',
+                            loading && 'animate-pulse',
                             x.down ? 'bg-destructive' : x.up ? 'bg-success/70' : 'bg-white/[0.07]'
                         )}
                     />
@@ -248,6 +249,8 @@ export default function EnhancedServersPage() {
     const [error, setError] = useState(null);
     const [selectedServer, setSelectedServer] = useState(null);
     const [responseTimeData, setResponseTimeData] = useState([]);
+    // True while the selected server’s history is being fetched, so "no checks yet" is not claimed before we know
+    const [historyLoading, setHistoryLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [query, setQuery] = useState('');
     const [checkMessage, setCheckMessage] = useState('');
@@ -389,6 +392,7 @@ export default function EnhancedServersPage() {
     // Fetch server history data. `forServer` carries the monitoring schedule used to filter points.
     const fetchServerHistory = async (serverId, forServer = selectedServer) => {
         const requestId = ++historyRequestId.current;
+        setHistoryLoading(true);
         try {
             // Get the last 24 hours of history data
             const response = await apiRequest(`/api/servers/${serverId}/history?period=24h&limit=500`, {
@@ -451,6 +455,9 @@ export default function EnhancedServersPage() {
         } catch (err) {
             console.error('Error fetching server history:', err);
             setError('We couldn’t load the check history for this server.');
+        } finally {
+            // Only the newest request may end the loading state
+            if (requestId === historyRequestId.current) setHistoryLoading(false);
         }
     };
 
@@ -521,6 +528,8 @@ export default function EnhancedServersPage() {
 
     const handleServerSelect = (server) => {
         setSelectedServer(server);
+        // The previous server’s history must not sit under this server’s name while the new one loads
+        setResponseTimeData([]);
         fetchServerHistory(idOf(server), server);
         window.history.replaceState(null, '', `?s=${idOf(server)}`);
     };
@@ -681,6 +690,8 @@ export default function EnhancedServersPage() {
     const alerts = monitoring?.alerts;
     const stateSince = s?.lastStatusChange || s?.lastChecked;
     const hasChecks = responseTimeData.length > 0;
+    // Loading, and nothing to show yet (a background refresh keeps showing what we have)
+    const historyPending = historyLoading && !hasChecks;
     const uptime24 = calculateUptime(24);
     const incidents = s ? getIncidents(responseTimeData, monitoring?.frequency, sStatus === 'down') : [];
     const frequency = monitoring?.frequency || 5;
@@ -710,7 +721,7 @@ export default function EnhancedServersPage() {
 
             <p className="sr-only" role="status" aria-live="polite">{checkMessage}</p>
 
-            <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
+            <div className="grid gap-6 lg:grid-cols-[250px_minmax(0,1fr)] lg:items-start xl:grid-cols-[300px_minmax(0,1fr)]">
                 {/* Server picker: horizontal strip on mobile, list on desktop */}
                 <nav aria-label="Servers" className="-mx-4 min-w-0 space-y-3 px-4 sm:-mx-8 sm:px-8 lg:sticky lg:top-6 lg:mx-0 lg:px-0">
                     {servers.length > 6 && (
@@ -762,7 +773,7 @@ export default function EnhancedServersPage() {
                                 )}
                                 coreClassName="space-y-7"
                             >
-                                <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="space-y-6">
                                     <div className="min-w-0 space-y-3">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <StatusBadge
@@ -775,7 +786,7 @@ export default function EnhancedServersPage() {
                                                 </Badge>
                                             )}
                                         </div>
-                                        <h2 className="font-display text-3xl font-medium tracking-tight">{s.name}</h2>
+                                        <h2 className="font-display text-3xl font-medium tracking-tight [overflow-wrap:anywhere]">{s.name}</h2>
                                         <a
                                             href={toHref(s.url)}
                                             target="_blank"
@@ -793,38 +804,52 @@ export default function EnhancedServersPage() {
                                         </p>
                                     </div>
 
-                                    <div className="sm:text-right">
-                                        {hasBreakdown ? (
-                                            <div
-                                                role="group"
-                                                aria-label={`Server ${serverMs} milliseconds, network ${networkMs} milliseconds`}
-                                                title="Server is how long the site itself took to answer. Network is everything else: finding the address, connecting, and the trip there and back."
-                                                className="flex items-end gap-7 sm:justify-end"
-                                            >
+                                    {/* Response time: labelled figures that reflow to the panel's width, so a long server name can never run into them */}
+                                    <div className="space-y-3 border-t border-white/[0.07] pt-5">
+                                        <dl className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] items-end gap-x-5 gap-y-4">
+                                            {hasBreakdown ? (
+                                                <>
+                                                    <div>
+                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Server</dt>
+                                                        <dd className="mt-1 font-display text-4xl font-medium tracking-tight tabular-nums">
+                                                            {serverMs}
+                                                            <span className="ml-1 text-base font-normal text-muted-foreground">ms</span>
+                                                        </dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Network</dt>
+                                                        <dd className="mt-1 font-display text-4xl font-medium tracking-tight tabular-nums text-muted-foreground">
+                                                            {networkMs}
+                                                            <span className="ml-1 text-base font-normal">ms</span>
+                                                        </dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Total</dt>
+                                                        <dd className="mt-1 font-display text-2xl font-medium tracking-tight tabular-nums">
+                                                            {s.responseTime}
+                                                            <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
+                                                        </dd>
+                                                    </div>
+                                                </>
+                                            ) : (
                                                 <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Server</p>
-                                                    <p className="font-display text-5xl font-medium tracking-tight tabular-nums">
-                                                        {serverMs}
-                                                        <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span>
-                                                    </p>
+                                                    <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Response</dt>
+                                                    <dd className={cn('mt-1 font-display text-4xl font-medium tracking-tight tabular-nums', !s.responseTime && 'text-muted-foreground')}>
+                                                        {s.responseTime ? s.responseTime : '—'}
+                                                        {s.responseTime ? <span className="ml-1 text-base font-normal text-muted-foreground">ms</span> : null}
+                                                    </dd>
                                                 </div>
-                                                <div>
-                                                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Network</p>
-                                                    <p className="font-display text-3xl font-medium tracking-tight tabular-nums text-muted-foreground">
-                                                        {networkMs}
-                                                        <span className="ml-1 text-base font-normal">ms</span>
-                                                    </p>
-                                                </div>
+                                            )}
+                                            <div>
+                                                <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Last check</dt>
+                                                <dd className="mt-1 font-display text-2xl font-medium tracking-tight">{s.lastChecked ? timeAgo(s.lastChecked) : 'Not yet'}</dd>
                                             </div>
-                                        ) : (
-                                            <p className={cn('font-display text-5xl font-medium tracking-tight tabular-nums', !s.responseTime && 'text-muted-foreground')}>
-                                                {s.responseTime ? s.responseTime : '—'}
-                                                {s.responseTime ? <span className="ml-1 text-lg font-normal text-muted-foreground">ms</span> : null}
+                                        </dl>
+                                        {hasBreakdown && (
+                                            <p className="max-w-[60ch] text-xs leading-relaxed text-muted-foreground">
+                                                Server is how long the site itself took to answer. Network is everything else: finding the address, connecting, and the trip there and back.
                                             </p>
                                         )}
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            Last response{s.lastChecked ? ` · checked ${timeAgo(s.lastChecked)}` : ''}{hasBreakdown ? ` · ${s.responseTime} ms in all` : ''}
-                                        </p>
                                     </div>
                                 </div>
 
@@ -838,10 +863,10 @@ export default function EnhancedServersPage() {
                                     <div className="mb-3 flex items-baseline justify-between gap-3">
                                         <h3 id="strip-heading" className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Last 24 hours</h3>
                                         <p className={cn('font-mono text-sm tabular-nums', uptime24 === null ? 'text-muted-foreground' : parseFloat(uptime24) >= 99.9 ? 'text-success' : parseFloat(uptime24) >= 95 ? 'text-warning' : 'text-destructive')}>
-                                            {uptime24 === null ? 'No checks yet' : `${uptime24}% uptime`}
+                                            {historyPending ? 'Loading…' : uptime24 === null ? 'No checks yet' : `${uptime24}% uptime`}
                                         </p>
                                     </div>
-                                    <HistoryStrip data={responseTimeData} />
+                                    <HistoryStrip data={responseTimeData} loading={historyPending} />
                                 </section>
 
                                 <div className="flex flex-wrap items-center gap-2.5 border-t border-white/[0.07] pt-5">
@@ -879,7 +904,7 @@ export default function EnhancedServersPage() {
                                                     {uptime === null ? '—' : `${uptime}%`}
                                                 </p>
                                                 <p className="mt-2 text-[13px] text-muted-foreground">
-                                                    {uptime === null ? 'No checks in this window yet' : `${plural(windowIncidents, 'incident')}, ${downtime} min downtime`}
+                                                    {uptime === null ? (historyPending ? 'Loading…' : 'No checks in this window yet') : `${plural(windowIncidents, 'incident')}, ${downtime} min downtime`}
                                                 </p>
                                             </div>
                                         );
@@ -896,7 +921,7 @@ export default function EnhancedServersPage() {
                                     <Legend />
                                 </div>
                                 <div className="mt-6">
-                                    <ResponseChart data={responseTimeData} height={300} summary={chartSummary} />
+                                    {historyPending ? <Skeleton className="h-[300px] rounded-2xl" role="status" aria-label="Loading response times" /> : <ResponseChart data={responseTimeData} height={300} summary={chartSummary} />}
                                 </div>
                                 {responseStats && (
                                     <dl className="mt-6 grid grid-cols-3 gap-4 border-t border-white/[0.07] pt-6">
