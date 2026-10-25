@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Reveal } from '@/components/ui/reveal';
 import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
+import CheckDetail from '@/app/components/Servers/CheckDetail';
 import { displayUrl, formatSpan, timeAgo } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
@@ -315,6 +316,7 @@ export default function IncidentsPage() {
                       </p>
                       <DiagnosisNote diagnosis={inc.diagnosis} className="mt-3" />
                       {inc.error && <p className={`break-words font-mono text-xs text-muted-foreground ${inc.diagnosis ? 'mt-3' : 'mt-1.5'}`}>{inc.error}</p>}
+                      <CheckDetail source={inc} collapsible className="mt-4" />
                     </div>
                     <div className="basis-full pl-6 text-left text-[13px] sm:shrink-0 sm:basis-auto sm:pl-0 sm:text-right">
                       <p className="tabular-nums">{formatTimestamp(inc.startedAt, null, 'D MMM, HH:mm')}</p>

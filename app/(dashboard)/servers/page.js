@@ -33,6 +33,7 @@ import { StatusBadge, StatusDot } from '@/components/ui/status';
 import { Reveal } from '@/components/ui/reveal';
 import TrialNotice from '@/app/components/TrialNotice';
 import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
+import CheckDetail from '@/app/components/Servers/CheckDetail';
 import { displayUrl, toHref, timeAgo, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { channelLabel } from '@/lib/chatWebhook';
@@ -562,6 +563,7 @@ export default function EnhancedServersPage() {
                     serverTime: checkData.serverTime ?? null,
                     error: checkData.error,
                     diagnosis: checkData.diagnosis ?? null,
+                    failureDetail: checkData.failureDetail ?? null,
                     lastChecked: checkData.timestamp
                 }));
 
@@ -574,6 +576,7 @@ export default function EnhancedServersPage() {
                             serverTime: checkData.serverTime ?? null,
                             error: checkData.error,
                             diagnosis: checkData.diagnosis ?? null,
+                            failureDetail: checkData.failureDetail ?? null,
                             lastChecked: checkData.timestamp
                         }
                         : server
@@ -1005,6 +1008,10 @@ export default function EnhancedServersPage() {
                                         <DiagnosisNote diagnosis={s.diagnosis} className="mb-3" />
                                         <span className="font-mono text-[13px]">{s.error}</span>
                                     </Alert>
+                                )}
+
+                                {sStatus === 'down' && (
+                                    <CheckDetail source={s} />
                                 )}
 
                                 <CertificateAlert server={s} />
