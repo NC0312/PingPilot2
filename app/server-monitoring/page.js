@@ -22,8 +22,8 @@ const FEATURES = [
 const FAQS = [
     { q: 'What can Ping Pilott monitor?', a: 'Websites, API endpoints, TCP host and port, and database host and port. Each is checked from outside your network on the schedule you choose.' },
     { q: 'Does it track CPU, memory or disk usage?', a: 'No. Ping Pilott measures availability and response time from the outside. It does not install an agent on your server, so it does not report CPU, memory or disk metrics.' },
-    { q: 'How many servers can I monitor?', a: 'The free trial covers 1, Starter 10, Pro 30 and Business 100. Contact support if you need more.' },
-    { q: 'How do I get alerted when a server is down?', a: 'By email on every plan. Business plans can also call a webhook so alerts reach tools such as chat or incident systems.' },
+    { q: 'How many servers can I monitor?', a: 'Free covers 5, Starter 20, Pro 60 and Business 200. Contact support if you need more.' },
+    { q: 'How do I get alerted when a server is down?', a: 'By email on every plan. Starter and higher plans can also call a webhook so alerts reach tools such as chat or incident systems.' },
 ]
 
 export default function Page() {

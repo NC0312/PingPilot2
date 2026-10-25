@@ -172,9 +172,9 @@ export default function ServerSettingsPage() {
                         }
                     ],
                     alerts: {
-                        enabled: updatedData.alertPreferences?.email || updatedData.alertPreferences?.phone || false,
+                        enabled: updatedData.alertPreferences?.email || false,
                         email: updatedData.alertPreferences?.email || false,
-                        phone: updatedData.alertPreferences?.phone || false,
+                        phone: false, // phone-call alerts were removed; the field stays so the API payload shape is unchanged
                         webhookUrl: updatedData.webhookUrl || '',
                         responseThreshold: updatedData.responseThreshold || 1000,
                         timeWindow: {
@@ -184,7 +184,7 @@ export default function ServerSettingsPage() {
                     }
                 },
                 contactEmails: updatedData.emails || [],
-                contactPhones: updatedData.phones || []
+                contactPhones: []
             };
 
             const response = await apiRequest(`/api/servers/${serverId}`, {
@@ -292,8 +292,7 @@ export default function ServerSettingsPage() {
 
         return {
             alertPreferences: {
-                email: server.monitoring?.alerts?.email || false,
-                phone: server.monitoring?.alerts?.phone || false
+                email: server.monitoring?.alerts?.email || false
             },
             monitoringDays: server.monitoring?.daysOfWeek || [0, 1, 2, 3, 4, 5, 6],
             alertTimeRange: server.monitoring?.alerts?.timeWindow || {
@@ -308,8 +307,7 @@ export default function ServerSettingsPage() {
             timezone: server.timezone,
             responseThreshold: server.monitoring?.alerts?.responseThreshold || 1000,
             webhookUrl: server.monitoring?.alerts?.webhookUrl || '',
-            emails: server.contactEmails || [],
-            phones: server.contactPhones || []
+            emails: server.contactEmails || []
         };
     };
 

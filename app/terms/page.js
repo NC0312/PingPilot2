@@ -36,9 +36,9 @@ const SECTIONS = [
         ],
     },
     {
-        title: 'Free trial, plans and taxes',
+        title: 'Free plan, plans and taxes',
         body: [
-            'New accounts may start with a free trial that has its own limits, such as the number of monitors and the check interval. Paid plans, prices, monitor limits and check intervals are described on the pricing page and may change; changes do not alter a billing period you have already paid for.',
+            'New accounts start on a free plan that has its own limits, such as the number of monitors and the check interval. Paid plans, prices, monitor limits and check intervals are described on the pricing page and may change; changes do not alter a billing period you have already paid for.',
             'Where payment is taken, the price, billing period and any applicable taxes, including Goods and Services Tax (GST), are shown before you pay. If a plan is not available for online purchase, contact support to change your plan. Any refund rights are those stated at the time of purchase and those the law gives you.',
         ],
     },

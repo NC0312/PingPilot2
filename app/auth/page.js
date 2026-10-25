@@ -204,7 +204,7 @@ function AuthForm() {
         <AuthShell>
             <AuthHeading
                 title={isLogin ? 'Sign in' : 'Create your account'}
-                description={isLogin ? (rawNext ? 'Sign in to continue.' : 'Welcome back. Pick up where you left off.') : 'Start your free trial. No setup needed.'}
+                description={isLogin ? (rawNext ? 'Sign in to continue.' : 'Welcome back. Pick up where you left off.') : 'Start free. No setup needed.'}
             />
 
             <div

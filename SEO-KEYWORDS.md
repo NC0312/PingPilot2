@@ -18,7 +18,7 @@ Method: SERP and competitor review (UptimeRobot, Better Stack, Pingdom, HetrixTo
 | server monitoring | commercial | title, features H2 |
 | uptime monitor | commercial | hero copy |
 | website down alert / downtime alerts | commercial | hero copy, OG |
-| uptime monitoring free trial | transactional | CTA, description |
+| free uptime monitoring | transactional | CTA, description |
 | incident history / response time monitoring | feature | feature bento (already present) |
 
 ### Tier 2: Long-tail (winnable first; needs new pages)
@@ -32,7 +32,7 @@ Method: SERP and competitor review (UptimeRobot, Better Stack, Pingdom, HetrixTo
 - cheap uptime monitoring / uptime monitoring pricing
 
 ### Tier 3: Alternative and comparison pages (high conversion)
-- UptimeRobot alternative (paid-plan commercial-use angle)
+- UptimeRobot alternative (do not lead with a commercial-use angle: its terms reportedly changed in 2026; verify first)
 - Pingdom alternative (cheaper)
 - Better Stack alternative / Freshping alternative
 - UptimeRobot vs Ping Pilott

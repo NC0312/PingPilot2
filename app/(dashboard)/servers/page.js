@@ -8,7 +8,6 @@ import {
     ArrowSquareOut,
     Gear,
     EnvelopeSimple,
-    Phone,
     Check,
     Minus,
     WarningCircle,
@@ -33,7 +32,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { StatusBadge, StatusDot } from '@/components/ui/status';
 import { Reveal } from '@/components/ui/reveal';
 import TrialNotice from '@/app/components/TrialNotice';
-import { displayUrl, toHref, timeAgo, formatPhone, formatSpan } from '@/lib/time';
+import DiagnosisNote from '@/app/components/Servers/DiagnosisNote';
+import { displayUrl, toHref, timeAgo, formatSpan } from '@/lib/time';
 import { cn } from '@/lib/utils';
 import { fetchAllServers } from '@/lib/servers';
 import { countByStatus, filterAndSort, statusOf } from '@/lib/server-list';
@@ -190,14 +190,17 @@ const getIncidents = (data, frequency, downNow) => {
     let open = null;
     data.forEach((p) => {
         if (p.status === 'down') {
-            if (!open) open = { start: p.time, error: p.error };
-            else if (!open.error) open.error = p.error;
+            if (!open) open = { start: p.time, error: p.error, diagnosis: p.diagnosis };
+            else {
+                if (!open.error) open.error = p.error;
+                if (!open.diagnosis) open.diagnosis = p.diagnosis;
+            }
         } else if (p.status === 'up' && open) {
-            out.push({ start: open.start, error: open.error, ongoing: false, ms: Math.max(p.time - open.start, minimum) });
+            out.push({ start: open.start, error: open.error, diagnosis: open.diagnosis, ongoing: false, ms: Math.max(p.time - open.start, minimum) });
             open = null;
         }
     });
-    if (open) out.push({ start: open.start, error: open.error, ongoing: downNow, ms: Math.max(Date.now() - open.start, minimum) });
+    if (open) out.push({ start: open.start, error: open.error, diagnosis: open.diagnosis, ongoing: downNow, ms: Math.max(Date.now() - open.start, minimum) });
     return out.reverse();
 };
 
@@ -444,6 +447,7 @@ export default function EnhancedServersPage() {
                         avgTime: check.responseTime || 0,
                         status: check.status || 'unknown',
                         error: check.error || null,
+                        diagnosis: check.diagnosis || null,
                         // Save original date components for filtering
                         ...zoned(date, forServer?.timezone) // day 0-6 (Sun-Sat), hour, minute on the server's clock
                     };
@@ -522,6 +526,7 @@ export default function EnhancedServersPage() {
                     responseTime: checkData.responseTime,
                     serverTime: checkData.serverTime ?? null,
                     error: checkData.error,
+                    diagnosis: checkData.diagnosis ?? null,
                     lastChecked: checkData.timestamp
                 }));
 
@@ -533,6 +538,7 @@ export default function EnhancedServersPage() {
                             responseTime: checkData.responseTime,
                             serverTime: checkData.serverTime ?? null,
                             error: checkData.error,
+                            diagnosis: checkData.diagnosis ?? null,
                             lastChecked: checkData.timestamp
                         }
                         : server
@@ -969,6 +975,7 @@ export default function EnhancedServersPage() {
 
                                 {sStatus === 'down' && s.error && (
                                     <Alert tone="error" title="Last check failed">
+                                        <DiagnosisNote diagnosis={s.diagnosis} className="mb-3" />
                                         <span className="font-mono text-[13px]">{s.error}</span>
                                     </Alert>
                                 )}
@@ -1082,6 +1089,7 @@ export default function EnhancedServersPage() {
                                                         {inc.ongoing ? 'Down for' : 'Was down for'} {formatSpan(inc.ms)}
                                                         {inc.ongoing && <Badge variant="destructive">Ongoing</Badge>}
                                                     </p>
+                                                    <DiagnosisNote diagnosis={inc.diagnosis} compact className="mt-0.5" />
                                                     {inc.error && <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{inc.error}</p>}
                                                 </div>
                                                 <p className="shrink-0 text-right text-[13px] text-muted-foreground">{formatTimestamp(inc.start, null, 'D MMM, HH:mm')}</p>
@@ -1122,7 +1130,6 @@ export default function EnhancedServersPage() {
                                             <ul className="space-y-1.5">
                                                 {[
                                                     ['Email', alerts?.email],
-                                                    ['Phone call', alerts?.phone],
                                                     ['Webhook', !!alerts?.webhookUrl],
                                                 ].map(([label, on]) => (
                                                     <li key={label} className="flex items-center gap-2">
@@ -1140,18 +1147,12 @@ export default function EnhancedServersPage() {
 
                                     <dl className="space-y-4">
                                         <Fact label="Tell">
-                                            {s.contactEmails?.length > 0 || s.contactPhones?.length > 0 ? (
+                                            {s.contactEmails?.length > 0 ? (
                                                 <ul className="flex flex-col gap-1.5">
                                                     {s.contactEmails?.map((email) => (
                                                         <li key={email} className="flex items-center gap-2">
                                                             <EnvelopeSimple weight="light" className="size-4 shrink-0 text-muted-foreground" />
                                                             <span className="break-all">{email}</span>
-                                                        </li>
-                                                    ))}
-                                                    {s.contactPhones?.map((phone) => (
-                                                        <li key={phone} className="flex items-center gap-2">
-                                                            <Phone weight="light" className="size-4 shrink-0 text-muted-foreground" />
-                                                            <span className="font-mono text-[13px] tabular-nums">{formatPhone(phone)}</span>
                                                         </li>
                                                     ))}
                                                 </ul>

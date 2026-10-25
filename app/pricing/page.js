@@ -4,16 +4,16 @@ import PricingSection from '@/app/components/Landing Page/PricingSection'
 const PATH = '/pricing'
 
 export const metadata = {
-    title: 'Uptime Monitoring Pricing and Free Trial',
+    title: 'Uptime Monitoring Pricing and Free Plan',
     description:
-        'Simple uptime monitoring pricing. Start with a free trial, then pay from $10 a month for 10 monitors, or $29 for 30 monitors checked every minute. Save 17% yearly.',
+        'Simple uptime monitoring pricing. Monitor 5 URLs free forever, then pay from $10 a month for 20 monitors checked every minute, or $29 for 60. Save 17% yearly.',
     alternates: { canonical: PATH },
     openGraph: { url: PATH, title: 'Uptime monitoring pricing | Ping Pilott' },
 }
 
 const FAQS = [
-    { q: 'Is there a free plan?', a: 'There is a free 2-day trial with 1 URL checked every 5 minutes and basic email alerts.' },
-    { q: 'What changes between plans?', a: 'The number of URLs you can monitor and how often they are checked. Starter checks every 3 minutes, Pro and Business every minute. Business adds webhook integrations and API access.' },
+    { q: 'Is there a free plan?', a: 'Yes. The free plan never expires. It covers 5 URLs checked every 5 minutes, with email alerts and Android app alerts.' },
+    { q: 'What changes between plans?', a: 'The number of URLs you can monitor and how often they are checked. Free checks every 5 minutes; Starter, Pro and Business check every minute. Starter adds webhooks, Pro adds advanced alerts and priority support, and Business adds API access.' },
     { q: 'Do yearly plans cost less?', a: 'Yes. Yearly billing saves 17% compared with paying monthly.' },
     { q: 'Can I monitor more than 100 URLs?', a: 'Yes. Contact support for a custom plan.' },
 ]
@@ -25,7 +25,7 @@ export default function Page() {
             crumb="Pricing"
             eyebrow="Pricing"
             title="Uptime monitoring pricing that scales with the URLs you watch."
-            intro="Every plan includes uptime checks and email alerts. Start free, then upgrade for more monitors and faster check intervals."
+            intro="Every plan includes uptime checks and email alerts. Start free, then upgrade for more monitors and 1-minute checks."
             faqs={FAQS}
             cta={false}
         >

@@ -16,15 +16,15 @@ function buildPlans(yearly) {
         {
             title: 'Free',
             price: '$0',
-            period: '2-day trial',
-            description: 'Try Ping Pilott on one URL.',
+            period: 'free forever',
+            description: 'Watch your first sites, free.',
             features: [
-                { included: true, text: '1 URL monitored' },
+                { included: true, text: '5 URLs monitored' },
                 { included: true, text: '5-minute check interval' },
-                { included: true, text: 'Basic email alerts' },
-                { included: false, text: 'Multiple URLs' },
+                { included: true, text: 'Email alerts' },
+                { included: false, text: '1-minute checks' },
             ],
-            buttonText: 'Start free trial',
+            buttonText: 'Start free',
             href: SIGNUP,
         },
         {
@@ -33,9 +33,9 @@ function buildPlans(yearly) {
             period: per,
             description: 'For individual developers.',
             features: [
-                { included: true, text: '10 URLs monitored' },
-                { included: true, text: '3-minute check interval' },
-                { included: true, text: 'Email alerts' },
+                { included: true, text: '20 URLs monitored' },
+                { included: true, text: '1-minute check interval' },
+                { included: true, text: 'Email alerts and webhooks' },
                 { included: true, text: 'Historical reporting' },
             ],
             buttonText: 'Choose Starter',
@@ -47,9 +47,9 @@ function buildPlans(yearly) {
             period: per,
             description: 'For growing websites.',
             features: [
-                { included: true, text: '30 URLs monitored' },
+                { included: true, text: '60 URLs monitored' },
                 { included: true, text: '1-minute check interval' },
-                { included: true, text: 'Email alerts' },
+                { included: true, text: 'Advanced alerts' },
                 { included: true, text: 'Priority support' },
             ],
             buttonText: 'Choose Pro',
@@ -63,10 +63,10 @@ function buildPlans(yearly) {
             period: per,
             description: 'For SaaS teams and larger estates.',
             features: [
-                { included: true, text: '100 URLs monitored' },
+                { included: true, text: '200 URLs monitored' },
                 { included: true, text: '1-minute check interval' },
-                { included: true, text: 'Webhook integrations' },
                 { included: true, text: 'API access' },
+                { included: true, text: '4-hour support response' },
             ],
             buttonText: 'Choose Business',
             href: signupFor('business', yearly),
@@ -91,7 +91,7 @@ export default function PricingSection({ compact = false }) {
                             Pay for the URLs you watch.
                         </h2>
                         <p className="text-[15px] leading-relaxed text-muted-foreground">
-                            Every plan includes uptime checks and email alerts. Upgrade for more monitors and faster intervals.
+                            Every plan includes uptime checks and email alerts, and the free plan never expires. Upgrade for more monitors and 1-minute checks.
                         </p>
                     </Reveal>
 
@@ -132,7 +132,7 @@ export default function PricingSection({ compact = false }) {
 
                 <Reveal className="mt-12">
                     <p className="text-sm text-muted-foreground">
-                        Need more than 100 URLs or a custom agreement?{' '}
+                        Need more than 200 URLs or a custom agreement?{' '}
                         <Link href="/support" className="text-primary underline-offset-4 hover:underline">
                             Contact support
                         </Link>
