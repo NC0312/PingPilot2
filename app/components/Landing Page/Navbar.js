@@ -46,7 +46,7 @@ const Navbar = () => {
                 id="mobile-menu"
                 aria-hidden={!open}
                 inert={!open}
-                className={`fixed inset-0 bg-background/85 backdrop-blur-3xl transition-[opacity,visibility] duration-700 ease-fluid md:hidden ${open ? 'visible opacity-100' : 'invisible opacity-0'}`}
+                className={`fixed inset-0 bg-background/85 backdrop-blur-3xl transition-[opacity,visibility] duration-700 ease-fluid lg:hidden ${open ? 'visible opacity-100' : 'invisible opacity-0'}`}
             >
                 <nav aria-label="Mobile" className="flex h-full flex-col justify-center gap-2 px-8 pb-10 pt-24">
                     {NAV_LINKS.map((l, i) => (
@@ -80,22 +80,22 @@ const Navbar = () => {
             </div>
 
             {/* Floating pill */}
-            <div className="glass relative flex w-full max-w-3xl items-center justify-between rounded-full py-2 pl-3 pr-2">
-                <Brand />
+            <div className="glass relative flex w-full max-w-4xl items-center justify-between rounded-full py-2 pl-3 pr-2">
+                <Brand className="shrink-0 whitespace-nowrap" />
 
-                <nav aria-label="Primary" className="hidden items-center gap-1 md:flex">
+                <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
                     {NAV_LINKS.map((l) => (
                         <a
                             key={l.href}
                             href={l.href}
-                            className="rounded-full px-3.5 py-2 text-sm text-muted-foreground transition-colors duration-300 ease-fluid hover:bg-white/[0.06] hover:text-foreground"
+                            className="whitespace-nowrap rounded-full px-3.5 py-2 text-sm text-muted-foreground transition-colors duration-300 ease-fluid hover:bg-white/[0.06] hover:text-foreground"
                         >
                             {l.label}
                         </a>
                     ))}
                 </nav>
 
-                <div className={`hidden items-center gap-1.5 md:flex ${pending ? 'invisible' : ''}`}>
+                <div className={`hidden items-center gap-1.5 lg:flex ${pending ? 'invisible' : ''}`}>
                     {!signedIn && (
                         <Button asChild variant="ghost" size="sm">
                             <Link href="/auth">Sign in</Link>
@@ -115,7 +115,7 @@ const Navbar = () => {
                     aria-expanded={open}
                     aria-controls="mobile-menu"
                     aria-label={open ? 'Close menu' : 'Open menu'}
-                    className="relative grid size-10 place-items-center rounded-full bg-white/[0.06] transition-colors duration-300 ease-fluid hover:bg-white/[0.1] active:scale-95 md:hidden"
+                    className="relative grid size-10 place-items-center rounded-full bg-white/[0.06] transition-colors duration-300 ease-fluid hover:bg-white/[0.1] active:scale-95 lg:hidden"
                 >
                     <span
                         className={`absolute h-px w-4 bg-foreground transition-transform duration-500 ease-fluid ${open ? 'rotate-45' : '-translate-y-[3px]'}`}
