@@ -758,7 +758,6 @@ export default function EnhancedServersPage() {
     // there and back). Only when the backend could tell them apart; otherwise the single response time is shown as before.
     const hasBreakdown = !!s && sStatus === 'up' && s.responseTime > 0 && Number.isFinite(s.serverTime) && s.serverTime >= 0;
     const serverMs = hasBreakdown ? Math.min(Math.round(s.serverTime), s.responseTime) : null;
-    const networkMs = hasBreakdown ? Math.max(0, s.responseTime - serverMs) : null;
     const monitoring = s?.monitoring;
     const alerts = monitoring?.alerts;
     const stateSince = s?.lastStatusChange || s?.lastChecked;
@@ -965,23 +964,16 @@ export default function EnhancedServersPage() {
                                             {hasBreakdown ? (
                                                 <>
                                                     <div>
-                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Server</dt>
+                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Response time</dt>
                                                         <dd className="mt-1 font-display text-4xl font-medium tracking-tight tabular-nums">
-                                                            {serverMs}
+                                                            {s.responseTime}
                                                             <span className="ml-1 text-base font-normal text-muted-foreground">ms</span>
                                                         </dd>
                                                     </div>
                                                     <div>
-                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Network</dt>
-                                                        <dd className="mt-1 font-display text-4xl font-medium tracking-tight tabular-nums text-muted-foreground">
-                                                            {networkMs}
-                                                            <span className="ml-1 text-base font-normal">ms</span>
-                                                        </dd>
-                                                    </div>
-                                                    <div>
-                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Total</dt>
+                                                        <dt className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Site&apos;s own time</dt>
                                                         <dd className="mt-1 font-display text-2xl font-medium tracking-tight tabular-nums">
-                                                            {s.responseTime}
+                                                            {serverMs}
                                                             <span className="ml-1 text-sm font-normal text-muted-foreground">ms</span>
                                                         </dd>
                                                     </div>
@@ -1002,7 +994,7 @@ export default function EnhancedServersPage() {
                                         </dl>
                                         {hasBreakdown && (
                                             <p className="max-w-[60ch] text-xs leading-relaxed text-muted-foreground">
-                                                Server is how long the site itself took to answer. Network is everything else: finding the address, connecting, and the trip there and back.
+                                                Response time is the whole check, the figure the chart and slow alerts use. Site&apos;s own time is how long your site took to answer within it.
                                             </p>
                                         )}
                                     </div>
