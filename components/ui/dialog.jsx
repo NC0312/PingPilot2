@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { AnimatePresence, motion } from "framer-motion"
 import { X } from "@phosphor-icons/react"
 
@@ -11,6 +12,9 @@ const EASE = [0.32, 0.72, 0, 1]
 /**
  * Accessible modal. Escape and backdrop click close it, body scroll is locked,
  * focus moves into the panel and returns to the trigger on close.
+ *
+ * It is drawn straight into <body>: a parent with a transform (the page's reveal animation) makes `fixed` mean "inside that
+ * parent", which cut the dialog off and let the content after it paint over it. A tall dialog scrolls inside itself.
  */
 function Dialog({ open, onClose, title, description, children, footer, className }) {
   const panelRef = React.useRef(null)
@@ -18,6 +22,8 @@ function Dialog({ open, onClose, title, description, children, footer, className
   const titleId = React.useId()
   const onCloseRef = React.useRef(onClose)
   onCloseRef.current = onClose
+  const [host, setHost] = React.useState(null)
+  React.useEffect(() => setHost(document.body), [])
 
   React.useEffect(() => {
     if (!open) return
@@ -52,7 +58,9 @@ function Dialog({ open, onClose, title, description, children, footer, className
     }
   }, [open])
 
-  return (
+  if (!host) return null
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -71,7 +79,7 @@ function Dialog({ open, onClose, title, description, children, footer, className
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            className={cn("bezel-sm w-full max-w-md outline-none", className)}
+            className={cn("bezel-sm max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto outline-none", className)}
             initial={{ opacity: 0, y: 28, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
@@ -98,7 +106,8 @@ function Dialog({ open, onClose, title, description, children, footer, className
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    host
   )
 }
 
