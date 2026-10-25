@@ -2,6 +2,7 @@ import { Geist, Geist_Mono, Outfit } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "./context/AuthContext";
 import { SocketProvider } from "./components/providers/SocketProvider";
+import { SITE_URL, SITE_NAME } from "@/lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,21 +21,33 @@ const outfit = Outfit({
 });
 
 export const metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "Ping Pilott — Uptime monitoring for websites and servers",
+    default: "Website Uptime Monitoring & Server Monitoring Tool | Ping Pilott",
     template: "%s · Ping Pilott",
   },
   description:
-    "Ping Pilott checks your websites and servers on a schedule, as often as every minute on paid plans, alerts you the moment something goes down, and keeps a clear history of every incident.",
+    "Monitor website and server uptime with checks as often as every minute, instant email alerts when a site goes down, response-time tracking and full incident history. Start a free trial.",
+  applicationName: SITE_NAME,
+  alternates: { canonical: "/" },
   icons: {
     icon: [{ url: "/favicon.png", type: "image/png" }],
   },
   openGraph: {
-    title: "Ping Pilott — Uptime monitoring",
+    title: "Ping Pilott — Website uptime monitoring with instant downtime alerts",
     description:
-      "Know about downtime before your customers do. Scheduled checks, instant alerts, full incident history.",
+      "Know your website is down before your customers do. Scheduled checks, instant email alerts, response-time tracking and full incident history.",
+    url: "/",
+    siteName: SITE_NAME,
     images: [{ url: "/banner.png" }],
     type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ping Pilott — Website uptime monitoring",
+    description: "Scheduled checks, instant downtime alerts and incident history for websites and servers.",
+    images: ["/banner.png"],
   },
 };
 

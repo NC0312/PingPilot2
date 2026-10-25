@@ -8,6 +8,7 @@ import FooterNav from './components/Landing Page/FooterNav'
 import { Brand } from '@/components/ui/brand'
 import { Button, ButtonArrow } from '@/components/ui/button'
 import { Reveal } from '@/components/ui/reveal'
+import { SITE_URL, SITE_NAME } from '@/lib/site'
 
 const STEPS = [
     {
@@ -27,9 +28,32 @@ const STEPS = [
     },
 ]
 
+const JSON_LD = {
+    '@context': 'https://schema.org',
+    '@graph': [
+        { '@type': 'Organization', '@id': `${SITE_URL}/#org`, name: SITE_NAME, url: SITE_URL, logo: `${SITE_URL}/logo.png` },
+        { '@type': 'WebSite', '@id': `${SITE_URL}/#site`, name: SITE_NAME, url: SITE_URL, publisher: { '@id': `${SITE_URL}/#org` } },
+        {
+            '@type': 'SoftwareApplication',
+            name: SITE_NAME,
+            applicationCategory: 'DeveloperApplication',
+            operatingSystem: 'Web',
+            description: 'Website and server uptime monitoring with scheduled checks, email alerts, response-time tracking and incident history.',
+            url: SITE_URL,
+            offers: [
+                { '@type': 'Offer', name: 'Free trial', price: '0', priceCurrency: 'USD' },
+                { '@type': 'Offer', name: 'Starter', price: '10', priceCurrency: 'USD' },
+                { '@type': 'Offer', name: 'Pro', price: '29', priceCurrency: 'USD' },
+                { '@type': 'Offer', name: 'Business', price: '79', priceCurrency: 'USD' },
+            ],
+        },
+    ],
+}
+
 export default function LandingPage() {
     return (
         <div className="flex min-h-[100dvh] flex-col">
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
             <Navbar />
 
             <main id="main-content">
@@ -38,7 +62,7 @@ export default function LandingPage() {
                     <div className="mx-auto grid max-w-6xl items-center gap-16 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
                         <div className="space-y-8">
                             <Reveal>
-                                <span className="eyebrow">Uptime monitoring</span>
+                                <span className="eyebrow">Website uptime monitoring</span>
                             </Reveal>
                             <Reveal delay={80}>
                                 <h1 className="font-display text-5xl font-medium leading-[0.98] tracking-[-0.035em] sm:text-6xl md:text-7xl">
@@ -47,7 +71,7 @@ export default function LandingPage() {
                             </Reveal>
                             <Reveal delay={160}>
                                 <p className="max-w-[48ch] text-lg leading-relaxed text-muted-foreground">
-                                    Ping Pilott checks your websites and servers on a schedule, alerts you the moment one stops answering, and keeps a clear history of every incident.
+                                    Ping Pilott is a website and server uptime monitor. It checks your URLs as often as every minute, emails you the moment a site goes down, and keeps a clear history of every incident.
                                 </p>
                             </Reveal>
                             <Reveal delay={240} className="flex flex-wrap items-center gap-3">
@@ -81,7 +105,7 @@ export default function LandingPage() {
                         <Reveal className="mb-14 max-w-xl space-y-5">
                             <span className="eyebrow">What you get</span>
                             <h2 className="font-display text-4xl font-medium leading-[1.05] tracking-tight md:text-5xl">
-                                The signal, without the setup.
+                                Website and server monitoring, without the setup.
                             </h2>
                         </Reveal>
                         <FeatureBento />
